@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Mail } from "lucide-react";
+import { Mail, Heart, Rocket } from "lucide-react";
 
 const SOCIAL_LINKS = {
   github: "https://github.com/YOUR_USERNAME",
@@ -45,67 +45,144 @@ function TwitterIcon(props) {
 
 export default function Footer() {
   return (
-    <footer className="bg-gray-900 text-gray-300 mt-20">
-      <div className="max-w-7xl mx-auto px-4 py-10 flex flex-col md:flex-row items-center justify-between gap-6">
-        <Link href="/" className="text-2xl font-bold text-white">
-          CrowdFund
-        </Link>
-
-        <p className="text-sm text-gray-400 text-center">
-          Empowering ideas through community support.
-        </p>
-
-        <div className="flex items-center gap-4">
-          <a
-            href={SOCIAL_LINKS.github}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hover:text-white transition-colors"
-            aria-label="GitHub"
-          >
-            <GithubIcon />
-          </a>
-          <a
-            href={SOCIAL_LINKS.linkedin}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hover:text-white transition-colors"
-            aria-label="LinkedIn"
-          >
-            <LinkedinIcon />
-          </a>
-          <a
-            href={SOCIAL_LINKS.facebook}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hover:text-white transition-colors"
-            aria-label="Facebook"
-          >
-            <FacebookIcon />
-          </a>
-          <a
-            href={SOCIAL_LINKS.twitter}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hover:text-white transition-colors"
-            aria-label="Twitter"
-          >
-            <TwitterIcon />
-          </a>
-          <a
-            href={SOCIAL_LINKS.email}
-            className="hover:text-white transition-colors"
-            aria-label="Email"
-          >
-            <Mail size={20} />
-          </a>
-        </div>
+    <footer className="relative bg-gradient-to-b from-[#14171F] to-[#0B0D14] text-[#9AA1AE] border-t border-[#D8A13B]/20 overflow-hidden">
+      {/* Decorative background elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-24 -right-24 w-64 h-64 bg-[#D8A13B]/5 rounded-full blur-3xl"></div>
+        <div className="absolute -bottom-32 -left-32 w-96 h-96 bg-[#D8A13B]/5 rounded-full blur-3xl"></div>
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[200px] bg-gradient-to-r from-[#D8A13B]/0 via-[#D8A13B]/5 to-[#D8A13B]/0 blur-2xl"></div>
       </div>
 
-      <div className="border-t border-gray-800 py-4">
-        <p className="text-center text-sm text-gray-500">
-          © {new Date().getFullYear()} CrowdFund. All rights reserved.
-        </p>
+      <div className="relative max-w-7xl mx-auto px-6 md:px-10 pt-12 pb-8">
+        {/* Main footer content */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-12 items-start">
+          {/* Brand Section */}
+          <div className="flex flex-col items-center md:items-start gap-3">
+            <Link
+              href="/"
+              className="text-3xl text-[#F3EFE4] relative group"
+              style={{ fontFamily: "'Fraunces', serif", fontWeight: 700 }}
+            >
+              CrowdFund
+              <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gradient-to-r from-[#D8A13B] to-[#F3EFE4] transition-all duration-300 group-hover:w-full"></span>
+            </Link>
+            <p
+              className="text-sm text-[#9AA1AE]/80 max-w-xs text-center md:text-left leading-relaxed"
+              style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+            >
+              Empowering ideas through community support.
+            </p>
+            <div className="flex items-center gap-1 text-xs text-[#9AA1AE]/50 mt-1">
+              <Heart size={12} className="text-[#D8A13B]" />
+              <span>Made with passion</span>
+              <Rocket size={12} className="text-[#D8A13B]" />
+            </div>
+          </div>
+
+          {/* Quick Links */}
+          <div className="flex flex-col items-center md:items-start gap-2">
+            <h4 className="text-[#F3EFE4] text-sm font-semibold tracking-wider uppercase opacity-70" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              Quick Links
+            </h4>
+            <div className="flex flex-col gap-1.5">
+              <Link href="/about" className="text-sm hover:text-[#D8A13B] transition-colors duration-300 hover:translate-x-1 inline-block">
+                About Us
+              </Link>
+              <Link href="/projects" className="text-sm hover:text-[#D8A13B] transition-colors duration-300 hover:translate-x-1 inline-block">
+                Projects
+              </Link>
+              <Link href="/contact" className="text-sm hover:text-[#D8A13B] transition-colors duration-300 hover:translate-x-1 inline-block">
+                Contact
+              </Link>
+            </div>
+          </div>
+
+          {/* Social & CTA */}
+          <div className="flex flex-col items-center md:items-end gap-4">
+            <div className="flex items-center gap-3">
+              <span className="text-xs uppercase tracking-wider opacity-50" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                Connect
+              </span>
+              <div className="h-px w-8 bg-gradient-to-r from-[#D8A13B]/0 via-[#D8A13B]/40 to-[#D8A13B]/0"></div>
+            </div>
+            <div className="flex items-center gap-3 text-[#9AA1AE]">
+              <a
+                href={SOCIAL_LINKS.github}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-2 rounded-full bg-white/5 hover:bg-[#D8A13B]/20 hover:text-[#D8A13B] transition-all duration-300 hover:scale-110 hover:shadow-lg hover:shadow-[#D8A13B]/10 border border-white/5 hover:border-[#D8A13B]/30"
+                aria-label="GitHub"
+              >
+                <GithubIcon className="w-4 h-4" />
+              </a>
+              <a
+                href={SOCIAL_LINKS.linkedin}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-2 rounded-full bg-white/5 hover:bg-[#D8A13B]/20 hover:text-[#D8A13B] transition-all duration-300 hover:scale-110 hover:shadow-lg hover:shadow-[#D8A13B]/10 border border-white/5 hover:border-[#D8A13B]/30"
+                aria-label="LinkedIn"
+              >
+                <LinkedinIcon className="w-4 h-4" />
+              </a>
+              <a
+                href={SOCIAL_LINKS.facebook}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-2 rounded-full bg-white/5 hover:bg-[#D8A13B]/20 hover:text-[#D8A13B] transition-all duration-300 hover:scale-110 hover:shadow-lg hover:shadow-[#D8A13B]/10 border border-white/5 hover:border-[#D8A13B]/30"
+                aria-label="Facebook"
+              >
+                <FacebookIcon className="w-4 h-4" />
+              </a>
+              <a
+                href={SOCIAL_LINKS.twitter}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-2 rounded-full bg-white/5 hover:bg-[#D8A13B]/20 hover:text-[#D8A13B] transition-all duration-300 hover:scale-110 hover:shadow-lg hover:shadow-[#D8A13B]/10 border border-white/5 hover:border-[#D8A13B]/30"
+                aria-label="Twitter"
+              >
+                <TwitterIcon className="w-4 h-4" />
+              </a>
+              <a
+                href={SOCIAL_LINKS.email}
+                className="p-2 rounded-full bg-white/5 hover:bg-[#D8A13B]/20 hover:text-[#D8A13B] transition-all duration-300 hover:scale-110 hover:shadow-lg hover:shadow-[#D8A13B]/10 border border-white/5 hover:border-[#D8A13B]/30"
+                aria-label="Email"
+              >
+                <Mail size={16} />
+              </a>
+            </div>
+            <div className="flex items-center gap-2 mt-1">
+              <div className="w-1 h-1 rounded-full bg-[#D8A13B] animate-pulse"></div>
+              <span className="text-[10px] uppercase tracking-widest opacity-40" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                Let's collaborate
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom bar */}
+        <div className="relative mt-10 pt-6 border-t border-white/5">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+            <p
+              className="text-xs text-[#9AA1AE]/50"
+              style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+            >
+              © {new Date().getFullYear()} CrowdFund. All rights reserved.
+            </p>
+            <div className="flex items-center gap-4 text-[10px] text-[#9AA1AE]/40 uppercase tracking-wider">
+              <Link href="/privacy" className="hover:text-[#D8A13B] transition-colors">
+                Privacy
+              </Link>
+              <span className="w-px h-3 bg-white/10"></span>
+              <Link href="/terms" className="hover:text-[#D8A13B] transition-colors">
+                Terms
+              </Link>
+              <span className="w-px h-3 bg-white/10"></span>
+              <Link href="/cookies" className="hover:text-[#D8A13B] transition-colors">
+                Cookies
+              </Link>
+            </div>
+          </div>
+        </div>
       </div>
     </footer>
   );
