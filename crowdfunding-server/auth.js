@@ -33,8 +33,8 @@ const auth = betterAuth({
       credits: {
         type: "number",
         required: false,
-        defaultValue: 0,
-        input: false, 
+        defaultValue: 50,
+        input: false,
       },
     },
   },
