@@ -1180,51 +1180,140 @@ app.get("/api/supporter/payments", authMiddleware, async (req, res) => {
     const userId = req.user.id;
     const db = getDB();
 
-    // Get all payments
+ 
+    const userObjectId = new ObjectId(userId);
+
+
     const payments = await db
       .collection("payments")
-      .find({ userId: userId })
+      .find({ 
+        $or: [
+          { userId: userId },        
+          { userId: userObjectId }   
+        ]
+      })
       .sort({ date: -1 })
       .toArray();
 
-    // ★★★ Sync with contributions ★★★
     const contributions = await db
       .collection("contributions")
-      .find({ supporterId: userId })
+      .find({ 
+        $or: [
+          { supporterId: userId },
+          { supporterId: userObjectId }
+        ]
+      })
       .toArray();
 
+    // Create map of contribution status
     const contributionMap = {};
     for (const c of contributions) {
       contributionMap[c._id.toString()] = c.status;
+      // Also map by campaignId if needed
+      if (c.campaignId) {
+        contributionMap[c.campaignId] = c.status;
+      }
     }
 
-    // Update payment status if needed
     for (const payment of payments) {
-      if (payment.contributionId && contributionMap[payment.contributionId]) {
-        const contributionStatus = contributionMap[payment.contributionId];
-        let paymentStatus = contributionStatus;
-        
-        if (contributionStatus === 'approved') {
-          paymentStatus = 'completed';
-        } else if (contributionStatus === 'pending') {
-          paymentStatus = 'pending';
-        } else if (contributionStatus === 'rejected') {
-          paymentStatus = 'rejected';
-        }
+      console.log(`Processing payment: ${payment._id}, type: ${payment.type}, status: ${payment.status}`);
 
-        if (payment.status !== paymentStatus) {
-          await db.collection("payments").updateOne(
-            { _id: payment._id },
-            { $set: { status: paymentStatus } }
-          );
-          payment.status = paymentStatus;
+      if (payment.type === 'contribution') {
+        if (payment.contributionId && contributionMap[payment.contributionId]) {
+          const contributionStatus = contributionMap[payment.contributionId];
+          let paymentStatus = contributionStatus;
+          
+          if (contributionStatus === 'approved') {
+            paymentStatus = 'completed';
+          } else if (contributionStatus === 'pending') {
+            paymentStatus = 'pending';
+          } else if (contributionStatus === 'rejected') {
+            paymentStatus = 'rejected';
+          }
+
+          if (payment.status !== paymentStatus) {
+            console.log(`Updating payment ${payment._id}: ${payment.status} -> ${paymentStatus}`);
+            await db.collection("payments").updateOne(
+              { _id: payment._id },
+              { $set: { status: paymentStatus } }
+            );
+            payment.status = paymentStatus;
+          }
+        }
+        else if (payment.campaignId && contributionMap[payment.campaignId]) {
+          const contributionStatus = contributionMap[payment.campaignId];
+          let paymentStatus = contributionStatus;
+          
+          if (contributionStatus === 'approved') {
+            paymentStatus = 'completed';
+          } else if (contributionStatus === 'pending') {
+            paymentStatus = 'pending';
+          } else if (contributionStatus === 'rejected') {
+            paymentStatus = 'rejected';
+          }
+
+          if (payment.status !== paymentStatus) {
+            console.log(`Updating payment ${payment._id} (by campaign): ${payment.status} -> ${paymentStatus}`);
+            await db.collection("payments").updateOne(
+              { _id: payment._id },
+              { $set: { status: paymentStatus } }
+            );
+            payment.status = paymentStatus;
+          }
         }
       }
+      if (payment.type === 'purchase') {
+        if (payment.status !== 'completed') {
+          console.log(`Fixing purchase payment ${payment._id}: ${payment.status} -> completed`);
+          await db.collection("payments").updateOne(
+            { _id: payment._id },
+            { $set: { status: 'completed' } }
+          );
+          payment.status = 'completed';
+        }
+      }
+    }
+    if (payments.length === 0 && contributions.length > 0) {
+      console.log('No payments found, creating from contributions...');
+      
+      for (const c of contributions) {
+        const paymentStatus = c.status === 'approved' ? 'completed' : c.status;
+        
+        await db.collection("payments").insertOne({
+          userId: userId,
+          type: 'contribution',
+          credits: -c.amount,
+          amount: c.amount,
+          campaignId: c.campaignId,
+          campaignTitle: c.campaignTitle,
+          date: c.date || new Date(),
+          status: paymentStatus,
+          contributionId: c._id.toString()
+        });
+        console.log(`Created payment for contribution: ${c._id}`);
+      }
+      
+      // Fetch payments again
+      const newPayments = await db
+        .collection("payments")
+        .find({ 
+          $or: [
+            { userId: userId },
+            { userId: userObjectId }
+          ]
+        })
+        .sort({ date: -1 })
+        .toArray();
+      
+      return res.json({
+        success: true,
+        payments: newPayments,
+      });
     }
 
     res.json({
       success: true,
-      payments,
+      payments: payments,
     });
   } catch (error) {
     console.error("Payments error:", error);
