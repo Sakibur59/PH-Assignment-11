@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Calendar, Users, DollarSign, Clock, ArrowLeft } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 
 export default function CampaignDetails() {
   const params = useParams();
@@ -17,17 +17,31 @@ export default function CampaignDetails() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
+  const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
+
   useEffect(() => {
     fetchCampaignDetails();
   }, [campaignId]);
 
   const fetchCampaignDetails = async () => {
     try {
-      const response = await fetch(`/api/campaigns/${campaignId}`, {
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+
+      const response = await fetch(`${SERVER_URL}/api/campaigns/${campaignId}`, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
         }
       });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch campaign');
+      }
+
       const data = await response.json();
       
       if (data.success) {
@@ -47,6 +61,7 @@ export default function CampaignDetails() {
     e.preventDefault();
     setSubmitting(true);
     setMessage("");
+    setError("");
 
     try {
       const contributionAmount = parseFloat(amount);
@@ -56,11 +71,12 @@ export default function CampaignDetails() {
         return;
       }
 
-      const response = await fetch('/api/campaigns/contribute', {
+      const token = localStorage.getItem('access_token');
+      const response = await fetch(`${SERVER_URL}/api/campaigns/contribute`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           campaignId,
@@ -68,12 +84,15 @@ export default function CampaignDetails() {
         })
       });
 
+      if (!response.ok) {
+        throw new Error('Failed to contribute');
+      }
+
       const data = await response.json();
       
       if (data.success) {
         setMessage("Contribution submitted successfully! Waiting for creator approval.");
         setAmount("");
-        // Refresh campaign data
         fetchCampaignDetails();
       } else {
         setError(data.message || "Failed to contribute");

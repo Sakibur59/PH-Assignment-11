@@ -13,6 +13,7 @@ import {
   Clock,
   Eye
 } from "lucide-react";
+import Toast from "@/components/Toast";
 
 export default function CreatorHome() {
   const { data: session } = useSession();
@@ -26,6 +27,13 @@ export default function CreatorHome() {
   const [selectedContribution, setSelectedContribution] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  
+  // Toast state
+  const [toast, setToast] = useState({
+    message: "",
+    type: "success",
+    visible: false
+  });
 
   const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
 
@@ -58,6 +66,14 @@ export default function CreatorHome() {
     }
   };
 
+  const showToast = (message, type = "success") => {
+    setToast({ message, type, visible: true });
+  };
+
+  const hideToast = () => {
+    setToast({ ...toast, visible: false });
+  };
+
   const handleApprove = async (contributionId) => {
     setActionLoading(true);
     try {
@@ -73,15 +89,15 @@ export default function CreatorHome() {
 
       const data = await response.json();
       if (data.success) {
-        alert('Contribution approved successfully!');
+        showToast('✅ Contribution approved successfully!', 'success');
         fetchCreatorData();
         setModalOpen(false);
       } else {
-        alert(data.message || 'Failed to approve');
+        showToast(data.message || 'Failed to approve', 'error');
       }
     } catch (error) {
       console.error('Error approving:', error);
-      alert('Failed to approve contribution');
+      showToast('Failed to approve contribution', 'error');
     } finally {
       setActionLoading(false);
     }
@@ -102,15 +118,15 @@ export default function CreatorHome() {
 
       const data = await response.json();
       if (data.success) {
-        alert('Contribution rejected and credits refunded!');
+        showToast('✅ Contribution rejected and credits refunded!', 'success');
         fetchCreatorData();
         setModalOpen(false);
       } else {
-        alert(data.message || 'Failed to reject');
+        showToast(data.message || 'Failed to reject', 'error');
       }
     } catch (error) {
       console.error('Error rejecting:', error);
-      alert('Failed to reject contribution');
+      showToast('Failed to reject contribution', 'error');
     } finally {
       setActionLoading(false);
     }
@@ -147,6 +163,15 @@ export default function CreatorHome() {
 
   return (
     <div>
+      {/* Toast Notification */}
+      {toast.visible && (
+        <Toast 
+          message={toast.message} 
+          type={toast.type} 
+          onClose={hideToast} 
+        />
+      )}
+
       {/* Welcome Section */}
       <div className="mb-8">
         <h2 className="text-2xl font-bold text-[#F3EFE4]" style={{ fontFamily: "'Fraunces', serif" }}>

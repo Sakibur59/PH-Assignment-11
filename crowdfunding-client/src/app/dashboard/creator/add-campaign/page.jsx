@@ -28,40 +28,41 @@ export default function AddCampaign() {
   const categories = ["Technology", "Education", "Environment", "Health", "Arts", "Community"];
 
   const handleImageUpload = async (file) => {
-    if (!file) return;
+  if (!file) return;
 
-    setUploading(true);
-    try {
-      // Try to upload to ImgBB (optional)
-      const formDataImg = new FormData();
-      formDataImg.append("image", file);
+  setUploading(true);
+  try {
+    const formDataImg = new FormData();
+    formDataImg.append("image", file);
 
-      const response = await fetch("https://api.imgbb.com/1/upload?key=YOUR_IMGBB_API_KEY", {
-        method: "POST",
-        body: formDataImg
-      });
+    const response = await fetch(process.env.IMAGE_UPLOAD_URL, {
+      method: "POST",
+      body: formDataImg
+    });
 
-      const data = await response.json();
-      
-      if (data.success) {
-        setFormData(prev => ({ ...prev, imageUrl: data.data.url }));
-        setImagePreview(URL.createObjectURL(file));
-        setMessage("Image uploaded successfully!");
-        setMessageType("success");
-      } else {
-        // Fallback: use local preview
-        setFormData(prev => ({ ...prev, imageUrl: URL.createObjectURL(file) }));
-        setImagePreview(URL.createObjectURL(file));
-      }
-    } catch (error) {
-      console.error("Image upload error:", error);
-      // Fallback: use local preview
-      setFormData(prev => ({ ...prev, imageUrl: URL.createObjectURL(file) }));
+    const data = await response.json();
+    
+    if (data.success) {
+      // Store the permanent URL from ImgBB
+      const imageUrl = data.data.url;
+      setFormData(prev => ({ ...prev, imageUrl }));
+      setImagePreview(imageUrl);
+      setMessage("Image uploaded successfully!");
+      setMessageType("success");
+    } else {
+      // Fallback: use placeholder
+      setFormData(prev => ({ ...prev, imageUrl: 'https://picsum.photos/seed/' + Date.now() + '/400/300' }));
       setImagePreview(URL.createObjectURL(file));
-    } finally {
-      setUploading(false);
     }
-  };
+  } catch (error) {
+    console.error("Image upload error:", error);
+    // Fallback: use placeholder
+    setFormData(prev => ({ ...prev, imageUrl: 'https://picsum.photos/seed/' + Date.now() + '/400/300' }));
+    setImagePreview(URL.createObjectURL(file));
+  } finally {
+    setUploading(false);
+  }
+};
 
   const handleChange = (e) => {
     const { name, value } = e.target;

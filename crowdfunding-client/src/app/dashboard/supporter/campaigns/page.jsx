@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Filter } from "lucide-react";
+import { Search, Calendar, Users } from "lucide-react";
 
 export default function ExploreCampaigns() {
   const router = useRouter();
@@ -22,7 +22,6 @@ export default function ExploreCampaigns() {
     try {
       const token = localStorage.getItem('access_token');
       if (!token) {
-        console.log('No token found');
         setLoading(false);
         return;
       }
@@ -30,14 +29,14 @@ export default function ExploreCampaigns() {
       const response = await fetch(`${SERVER_URL}/api/campaigns/approved`, {
         headers: {
           'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json'
         }
       });
-      
+
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        throw new Error('Failed to fetch campaigns');
       }
-      
+
       const data = await response.json();
       
       if (data.success) {

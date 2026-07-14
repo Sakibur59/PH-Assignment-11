@@ -1,3 +1,4 @@
+// client/src/app/dashboard/creator/profile/page.jsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -30,6 +31,7 @@ export default function CreatorProfile() {
   const [imagePreview, setImagePreview] = useState(null);
 
   const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
+  const IMGBB_API_KEY = process.env.NEXT_PUBLIC_IMGBB_API_KEY;
 
   useEffect(() => {
     if (session?.user) {
@@ -49,36 +51,50 @@ export default function CreatorProfile() {
     if (!file) return;
 
     setLoading(true);
+    setMessage("");
+    setMessageType("");
+
     try {
-      // Try to upload to ImgBB
+      // ★★★ ImgBB তে আপলোড করুন ★★★
       const formDataImg = new FormData();
       formDataImg.append("image", file);
 
-      const response = await fetch("https://api.imgbb.com/1/upload?key=YOUR_IMGBB_API_KEY", {
+      const response = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
         method: "POST",
         body: formDataImg
       });
 
+      // Check if response is JSON
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error("Server returned non-JSON response");
+      }
+
       const data = await response.json();
       
       if (data.success) {
-        setFormData(prev => ({ ...prev, image: data.data.url }));
-        setImagePreview(data.data.url);
-        setMessage("Image uploaded successfully!");
+        const imageUrl = data.data.url;
+        setFormData(prev => ({ ...prev, image: imageUrl }));
+        setImagePreview(imageUrl);
+        setMessage("Profile image uploaded successfully!");
         setMessageType("success");
         setTimeout(() => setMessage(""), 3000);
       } else {
-        // Fallback: use local preview
-        const localUrl = URL.createObjectURL(file);
-        setImagePreview(localUrl);
-        setFormData(prev => ({ ...prev, image: localUrl }));
+        // Fallback: UI Avatars
+        const fallbackUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.name || 'User')}&background=D8A13B&color=fff&size=128`;
+        setFormData(prev => ({ ...prev, image: fallbackUrl }));
+        setImagePreview(fallbackUrl);
+        setMessage("Using fallback image. Please try again.");
+        setMessageType("warning");
       }
     } catch (error) {
       console.error("Image upload error:", error);
-      // Fallback: use local preview
-      const localUrl = URL.createObjectURL(file);
-      setImagePreview(localUrl);
-      setFormData(prev => ({ ...prev, image: localUrl }));
+      // Fallback: UI Avatars
+      const fallbackUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.name || 'User')}&background=D8A13B&color=fff&size=128`;
+      setFormData(prev => ({ ...prev, image: fallbackUrl }));
+      setImagePreview(fallbackUrl);
+      setMessage("Image upload failed. Using fallback image.");
+      setMessageType("error");
     } finally {
       setLoading(false);
     }
@@ -110,10 +126,8 @@ export default function CreatorProfile() {
         setMessage("Profile updated successfully!");
         setMessageType("success");
         
-        // Refetch session to update the UI
         await refetch();
         
-        // Update local state with new data
         if (data.user) {
           setFormData({
             ...formData,
