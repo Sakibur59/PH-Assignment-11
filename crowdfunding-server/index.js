@@ -62,10 +62,21 @@ app.get("/api/user/credits", authMiddleware, async (req, res) => {
   try {
     const db = getDB();
     const userId = req.user.id;
+    const userEmail = req.user.email;
+    let user = await db.collection("user").findOne({ _id: userId });
 
-    const user = await db
-      .collection("users")
-      .findOne({ _id: new ObjectId(userId) }, { projection: { credits: 1 } });
+    if (!user) {
+      console.log("User not found by ID, trying by email...");
+      user = await db.collection("user").findOne({ email: userEmail });
+    }
+
+    if (!user) {
+      console.log("User not found!");
+      return res.json({
+        success: true,
+        credits: 0,
+      });
+    }
 
     res.json({
       success: true,
@@ -91,9 +102,8 @@ app.post("/api/credits/purchase", authMiddleware, async (req, res) => {
       });
     }
 
-    const user = await db
-      .collection("users")
-      .findOne({ _id: new ObjectId(userId) });
+    const user = await db.collection("user").findOne({ _id: userId });
+
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -101,10 +111,11 @@ app.post("/api/credits/purchase", authMiddleware, async (req, res) => {
       });
     }
 
+    // Update using userId directly
     const result = await db
-      .collection("users")
+      .collection("user")
       .findOneAndUpdate(
-        { _id: new ObjectId(userId) },
+        { _id: userId },
         { $inc: { credits: parseInt(credits) } },
         { returnDocument: "after" },
       );
@@ -120,7 +131,7 @@ app.post("/api/credits/purchase", authMiddleware, async (req, res) => {
 
     res.json({
       success: true,
-      newCredits: result.value.credits || 0,
+      newCredits: result?.value?.credits || 0,
       message: `Successfully purchased ${credits} credits`,
     });
   } catch (error) {
@@ -134,6 +145,8 @@ app.post("/api/create-checkout-session", authMiddleware, async (req, res) => {
   try {
     const { credits, amount, packageId } = req.body;
     const userId = req.user.id;
+    const userEmail = req.user.email;
+    const db = getDB();
 
     if (!credits || !amount) {
       return res.status(400).json({
@@ -141,19 +154,52 @@ app.post("/api/create-checkout-session", authMiddleware, async (req, res) => {
         message: "Credits and amount are required",
       });
     }
+    let user = await db.collection("user").findOne({ _id: userId });
 
-    const db = getDB();
+    if (!user) {
+      console.log("User not found by ID, trying by email...");
+      user = await db.collection("user").findOne({ email: userEmail });
+    }
 
-    const result = await db
-      .collection("users")
-      .findOneAndUpdate(
-        { _id: new ObjectId(userId) },
-        { $inc: { credits: parseInt(credits) } },
-        { returnDocument: "after" },
-      );
+    if (!user) {
+      // If user doesn't exist, create one
+      console.log("User not found, creating new user...");
+      const newUser = {
+        _id: userId,
+        name: req.user.name,
+        email: userEmail,
+        emailVerified: req.user.emailVerified || false,
+        image: req.user.image || "",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        role: req.user.role || "supporter",
+        credits: 50, // Starting credits
+      };
+
+      await db.collection("user").insertOne(newUser);
+      user = newUser;
+      console.log("New user created with credits: 50");
+    }
+    const updateResult = await db
+      .collection("user")
+      .updateOne({ _id: user._id }, { $inc: { credits: parseInt(credits) } });
+
+    console.log("Update result:", updateResult);
+
+    if (updateResult.matchedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found during update",
+      });
+    }
+    const updatedUser = await db.collection("user").findOne({
+      _id: user._id,
+    });
+
+    console.log("Updated credits:", updatedUser?.credits || 0);
 
     await db.collection("payments").insertOne({
-      userId: userId,
+      userId: user._id,
       type: "purchase",
       credits: parseInt(credits),
       amount: amount / 100,
@@ -164,7 +210,7 @@ app.post("/api/create-checkout-session", authMiddleware, async (req, res) => {
 
     res.json({
       success: true,
-      newCredits: result.value.credits || 0,
+      newCredits: updatedUser?.credits || 0,
       message: `Successfully purchased ${credits} credits`,
     });
   } catch (error) {
@@ -172,131 +218,6 @@ app.post("/api/create-checkout-session", authMiddleware, async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 });
-
-// 4. Get supporter dashboard
-app.get("/api/supporter/dashboard", authMiddleware, async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const db = getDB();
-
-    const contributions = await db
-      .collection("contributions")
-      .find({ supporterId: userId })
-      .toArray();
-
-    const approvedContributions = contributions.filter(
-      (c) => c.status === "approved",
-    );
-    const pendingContributions = contributions.filter(
-      (c) => c.status === "pending",
-    );
-
-    const stats = {
-      totalContributions: contributions.length,
-      pendingContributions: pendingContributions.length,
-      totalAmount: approvedContributions.reduce(
-        (sum, c) => sum + (c.amount || 0),
-        0,
-      ),
-    };
-
-    const approvedWithDetails = await Promise.all(
-      approvedContributions.map(async (c) => {
-        try {
-          const campaign = await db
-            .collection("campaigns")
-            .findOne({ _id: new ObjectId(c.campaignId) });
-          return {
-            ...c,
-            campaignTitle: campaign ? campaign.title : "Unknown Campaign",
-            creatorName: campaign ? campaign.creatorName : "Unknown",
-          };
-        } catch (err) {
-          return {
-            ...c,
-            campaignTitle: "Unknown Campaign",
-            creatorName: "Unknown",
-          };
-        }
-      }),
-    );
-
-    res.json({
-      success: true,
-      stats,
-      approvedContributions: approvedWithDetails,
-    });
-  } catch (error) {
-    console.error("Dashboard error:", error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// 5. Get supporter contributions
-app.get("/api/supporter/contributions", authMiddleware, async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const db = getDB();
-
-    const contributions = await db
-      .collection("contributions")
-      .find({ supporterId: userId })
-      .sort({ date: -1 })
-      .toArray();
-
-    const contributionsWithDetails = await Promise.all(
-      contributions.map(async (c) => {
-        try {
-          const campaign = await db
-            .collection("campaigns")
-            .findOne({ _id: new ObjectId(c.campaignId) });
-          return {
-            ...c,
-            campaignTitle: campaign ? campaign.title : "Unknown Campaign",
-            creatorName: campaign ? campaign.creatorName : "Unknown",
-          };
-        } catch (err) {
-          return {
-            ...c,
-            campaignTitle: "Unknown Campaign",
-            creatorName: "Unknown",
-          };
-        }
-      }),
-    );
-
-    res.json({
-      success: true,
-      contributions: contributionsWithDetails,
-    });
-  } catch (error) {
-    console.error("Contributions error:", error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// 6. Get supporter payment history
-app.get("/api/supporter/payments", authMiddleware, async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const db = getDB();
-
-    const payments = await db
-      .collection("payments")
-      .find({ userId: userId })
-      .sort({ date: -1 })
-      .toArray();
-
-    res.json({
-      success: true,
-      payments,
-    });
-  } catch (error) {
-    console.error("Payments error:", error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
 // 7. Get approved campaigns
 app.get("/api/campaigns/approved", authMiddleware, async (req, res) => {
   try {
@@ -395,6 +316,11 @@ app.post("/api/campaigns/contribute", authMiddleware, async (req, res) => {
     const { campaignId, amount } = req.body;
     const userId = req.user.id;
 
+    console.log('=== CONTRIBUTE TO CAMPAIGN ===');
+    console.log('User ID (string):', userId);
+    console.log('Campaign ID:', campaignId);
+    console.log('Amount:', amount);
+
     if (!campaignId || !amount) {
       return res.status(400).json({
         success: false,
@@ -402,16 +328,23 @@ app.post("/api/campaigns/contribute", authMiddleware, async (req, res) => {
       });
     }
 
-    const user = await db
-      .collection("users")
-      .findOne({ _id: new ObjectId(userId) });
+    // ★★★ IMPORTANT: Convert userId to ObjectId ★★★
+    const userObjectId = new ObjectId(userId);
+    console.log('User ObjectId:', userObjectId);
 
+    // Find user using ObjectId
+    const user = await db.collection("user").findOne({ _id: userObjectId });
+    
     if (!user) {
+      console.log('User not found with ObjectId:', userObjectId);
       return res.status(404).json({
         success: false,
         message: "User not found",
       });
     }
+
+    console.log('User found:', user.name);
+    console.log('User credits:', user.credits || 0);
 
     if ((user.credits || 0) < amount) {
       return res.status(400).json({
@@ -420,10 +353,7 @@ app.post("/api/campaigns/contribute", authMiddleware, async (req, res) => {
       });
     }
 
-    const campaign = await db
-      .collection("campaigns")
-      .findOne({ _id: new ObjectId(campaignId) });
-
+    const campaign = await db.collection("campaigns").findOne({ _id: new ObjectId(campaignId) });
     if (!campaign) {
       return res.status(404).json({
         success: false,
@@ -438,14 +368,17 @@ app.post("/api/campaigns/contribute", authMiddleware, async (req, res) => {
       });
     }
 
-    await db
-      .collection("users")
-      .updateOne({ _id: new ObjectId(userId) }, { $inc: { credits: -amount } });
+    // Deduct credits - use ObjectId
+    await db.collection("user").updateOne(
+      { _id: userObjectId },
+      { $inc: { credits: -amount } }
+    );
 
+    // Create contribution
     const contribution = {
       campaignId: campaignId,
       campaignTitle: campaign.title,
-      supporterId: userId,
+      supporterId: userId, // string রাখতে পারেন বা userObjectId
       supporterName: user.name,
       supporterEmail: user.email,
       creatorName: campaign.creatorName || "Unknown",
@@ -456,7 +389,11 @@ app.post("/api/campaigns/contribute", authMiddleware, async (req, res) => {
     };
 
     const result = await db.collection("contributions").insertOne(contribution);
+    const contributionId = result.insertedId.toString();
 
+    console.log('Contribution created with ID:', contributionId);
+
+    // Create payment record
     await db.collection("payments").insertOne({
       userId: userId,
       type: "contribution",
@@ -466,12 +403,15 @@ app.post("/api/campaigns/contribute", authMiddleware, async (req, res) => {
       campaignTitle: campaign.title,
       date: new Date(),
       status: "pending",
+      contributionId: contributionId
     });
+
+    console.log('Payment record created');
 
     res.json({
       success: true,
       message: "Contribution submitted successfully",
-      contributionId: result.insertedId,
+      contributionId: contributionId,
     });
   } catch (error) {
     console.error("Contribute error:", error);
@@ -560,18 +500,23 @@ app.post(
       const contribution = await db
         .collection("contributions")
         .findOne({ _id: new ObjectId(contributionId) });
+        
       if (!contribution) {
         return res
           .status(404)
           .json({ success: false, message: "Contribution not found" });
       }
 
+      console.log('=== APPROVE CONTRIBUTION ===');
+      console.log('Contribution ID:', contributionId);
+      console.log('Status:', contribution.status);
+
       // Update contribution status
       await db
         .collection("contributions")
         .updateOne(
           { _id: new ObjectId(contributionId) },
-          { $set: { status: "approved" } },
+          { $set: { status: "approved" } }
         );
 
       // Update campaign raised amount
@@ -579,18 +524,35 @@ app.post(
         .collection("campaigns")
         .updateOne(
           { _id: new ObjectId(contribution.campaignId) },
-          { $inc: { raised: contribution.amount } },
+          { $inc: { raised: contribution.amount } }
         );
 
-      // Update payment status
-      await db.collection("payments").updateOne(
-        {
-          userId: contribution.supporterId,
-          campaignId: contribution.campaignId,
-          type: "contribution",
+      // ★★★ Update payment by contributionId ★★★
+      const paymentUpdate = await db.collection("payments").updateOne(
+        { 
+          contributionId: contributionId,
+          type: "contribution"
         },
-        { $set: { status: "completed" } },
+        { $set: { status: "completed" } }
       );
+
+      console.log('Payment update result:', paymentUpdate);
+
+      // If no payment found, create one
+      if (paymentUpdate.matchedCount === 0) {
+        console.log('No payment found, creating new...');
+        await db.collection("payments").insertOne({
+          userId: contribution.supporterId,
+          type: "contribution",
+          credits: -contribution.amount,
+          amount: contribution.amount,
+          campaignId: contribution.campaignId,
+          campaignTitle: contribution.campaignTitle,
+          date: new Date(),
+          status: "completed",
+          contributionId: contributionId
+        });
+      }
 
       res.json({
         success: true,
@@ -600,7 +562,7 @@ app.post(
       console.error("Approve contribution error:", error);
       res.status(500).json({ success: false, message: error.message });
     }
-  },
+  }
 );
 
 // 12. Reject contribution
@@ -621,37 +583,58 @@ app.post(
       const contribution = await db
         .collection("contributions")
         .findOne({ _id: new ObjectId(contributionId) });
+        
       if (!contribution) {
         return res
           .status(404)
           .json({ success: false, message: "Contribution not found" });
       }
 
+      console.log('=== REJECT CONTRIBUTION ===');
+      console.log('Contribution ID:', contributionId);
+
       // Update contribution status
       await db
         .collection("contributions")
         .updateOne(
           { _id: new ObjectId(contributionId) },
-          { $set: { status: "rejected" } },
+          { $set: { status: "rejected" } }
         );
 
       // Refund credits to supporter
       await db
-        .collection("users")
+        .collection("user")
         .updateOne(
           { _id: new ObjectId(contribution.supporterId) },
-          { $inc: { credits: contribution.amount } },
+          { $inc: { credits: contribution.amount } }
         );
 
-      // Update payment status
-      await db.collection("payments").updateOne(
-        {
-          userId: contribution.supporterId,
-          campaignId: contribution.campaignId,
-          type: "contribution",
+      // ★★★ Update payment by contributionId ★★★
+      const paymentUpdate = await db.collection("payments").updateOne(
+        { 
+          contributionId: contributionId,
+          type: "contribution"
         },
-        { $set: { status: "rejected" } },
+        { $set: { status: "rejected" } }
       );
+
+      console.log('Payment update result:', paymentUpdate);
+
+      // If no payment found, create one
+      if (paymentUpdate.matchedCount === 0) {
+        console.log('No payment found, creating new...');
+        await db.collection("payments").insertOne({
+          userId: contribution.supporterId,
+          type: "contribution",
+          credits: -contribution.amount,
+          amount: contribution.amount,
+          campaignId: contribution.campaignId,
+          campaignTitle: contribution.campaignTitle,
+          date: new Date(),
+          status: "rejected",
+          contributionId: contributionId
+        });
+      }
 
       res.json({
         success: true,
@@ -661,7 +644,7 @@ app.post(
       console.error("Reject contribution error:", error);
       res.status(500).json({ success: false, message: error.message });
     }
-  },
+  }
 );
 
 // 13. Add new campaign
@@ -837,7 +820,7 @@ app.delete("/api/creator/campaign/:id", authMiddleware, async (req, res) => {
     // Refund all supporters
     for (const contribution of contributions) {
       await db
-        .collection("users")
+        .collection("user")
         .updateOne(
           { _id: new ObjectId(contribution.supporterId) },
           { $inc: { credits: contribution.amount } },
@@ -867,7 +850,9 @@ app.post("/api/creator/withdraw", authMiddleware, async (req, res) => {
   try {
     const { creditsToWithdraw, paymentSystem, accountNumber } = req.body;
     const userId = req.user.id;
+    const userEmail = req.user.email;
     const db = getDB();
+
 
     if (!creditsToWithdraw || !paymentSystem || !accountNumber) {
       return res.status(400).json({
@@ -876,16 +861,19 @@ app.post("/api/creator/withdraw", authMiddleware, async (req, res) => {
       });
     }
 
-    const user = await db
-      .collection("users")
-      .findOne({ _id: new ObjectId(userId) });
+    // Find user
+    let user = await db.collection("user").findOne({ _id: userId });
     if (!user) {
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found" });
+      user = await db.collection("user").findOne({ email: userEmail });
     }
 
-    // Calculate total raised credits
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
     const campaigns = await db
       .collection("campaigns")
       .find({ creatorId: userId })
@@ -903,7 +891,9 @@ app.post("/api/creator/withdraw", authMiddleware, async (req, res) => {
       totalRaised += contributions.reduce((sum, c) => sum + (c.amount || 0), 0);
     }
 
-    // Check if user has enough raised credits
+
+
+
     if (totalRaised < 200) {
       return res.status(400).json({
         success: false,
@@ -911,14 +901,37 @@ app.post("/api/creator/withdraw", authMiddleware, async (req, res) => {
       });
     }
 
-    if (creditsToWithdraw > totalRaised) {
+
+    if (parseFloat(creditsToWithdraw) > totalRaised) {
       return res.status(400).json({
         success: false,
-        message: "Insufficient credits",
+        message: `Insufficient credits. Available: ${totalRaised} credits`,
       });
     }
 
-    const withdrawAmount = creditsToWithdraw / 20; // 20 credits = 1 dollar
+    const pendingWithdrawals = await db
+      .collection("withdrawals")
+      .find({
+        creatorId: userId,
+        status: "pending",
+      })
+      .toArray();
+
+    const pendingCredits = pendingWithdrawals.reduce(
+      (sum, w) => sum + w.withdrawalCredits,
+      0,
+    );
+
+  
+
+    if (pendingCredits + parseFloat(creditsToWithdraw) > totalRaised) {
+      return res.status(400).json({
+        success: false,
+        message: `You already have ${pendingCredits} credits pending. Available: ${totalRaised}`,
+      });
+    }
+
+    const withdrawAmount = parseFloat(creditsToWithdraw) / 20;
 
     const withdrawal = {
       creatorId: userId,
@@ -934,16 +947,20 @@ app.post("/api/creator/withdraw", authMiddleware, async (req, res) => {
 
     await db.collection("withdrawals").insertOne(withdrawal);
 
+    console.log(
+      "Withdrawal request saved. Pending:",
+      pendingCredits + parseFloat(creditsToWithdraw),
+    );
+
     res.json({
       success: true,
-      message: "Withdrawal request submitted successfully",
+      message: `Withdrawal request submitted. Pending: ${pendingCredits + parseFloat(creditsToWithdraw)} credits`,
     });
   } catch (error) {
     console.error("Withdrawal error:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
-
 // 18. Get creator's withdrawal history
 app.get("/api/creator/withdrawals", authMiddleware, async (req, res) => {
   try {
@@ -967,35 +984,35 @@ app.get("/api/creator/withdrawals", authMiddleware, async (req, res) => {
 });
 
 // Update user profile
-app.put('/api/user/profile', authMiddleware, async (req, res) => {
+app.put("/api/user/profile", authMiddleware, async (req, res) => {
   try {
     const { name, image } = req.body;
     const db = getDB();
 
-    console.log('Updating profile for user:', req.user.email);
+    console.log("Updating profile for user:", req.user.email);
 
     if (!name) {
       return res.status(400).json({
         success: false,
-        message: 'Name is required'
+        message: "Name is required",
       });
     }
-    let user = await db.collection('user').findOne({ 
-      email: req.user.email 
+    let user = await db.collection("user").findOne({
+      email: req.user.email,
     });
     if (!user) {
-      user = await db.collection('user').findOne({ 
-        _id: req.user.id 
+      user = await db.collection("user").findOne({
+        _id: req.user.id,
       });
     }
     if (!user) {
       try {
         const objectId = new ObjectId(req.user.id);
-        user = await db.collection('user').findOne({ 
-          _id: objectId 
+        user = await db.collection("user").findOne({
+          _id: objectId,
         });
       } catch (err) {
-        console.log('ObjectId conversion failed');
+        console.log("ObjectId conversion failed");
       }
     }
 
@@ -1005,50 +1022,212 @@ app.put('/api/user/profile', authMiddleware, async (req, res) => {
         name: req.user.name,
         email: req.user.email,
         emailVerified: req.user.emailVerified || false,
-        image: req.user.image || '',
+        image: req.user.image || "",
         createdAt: new Date(),
         updatedAt: new Date(),
-        role: req.user.role || 'supporter',
-        credits: req.user.credits || 50
+        role: req.user.role || "supporter",
+        credits: req.user.credits || 50,
       };
-      
-      await db.collection('user').insertOne(newUser);
+
+      await db.collection("user").insertOne(newUser);
       user = newUser;
-      console.log('Created new user in DB:', user);
+      console.log("Created new user in DB:", user);
     }
 
     const updateData = {
       name: name,
-      updatedAt: new Date()
+      updatedAt: new Date(),
     };
 
     if (image) {
       updateData.image = image;
     }
 
-    const result = await db.collection('user').updateOne(
-      { _id: user._id },
-      { $set: updateData }
-    );
+    const result = await db
+      .collection("user")
+      .updateOne({ _id: user._id }, { $set: updateData });
 
     if (result.matchedCount === 0) {
       return res.status(404).json({
         success: false,
-        message: 'User not found during update'
+        message: "User not found during update",
       });
     }
 
-    const updatedUser = await db.collection('user').findOne(
-      { _id: user._id }
+    const updatedUser = await db.collection("user").findOne({ _id: user._id });
+
+    res.json({
+      success: true,
+      message: "Profile updated successfully",
+      user: updatedUser,
+    });
+  } catch (error) {
+    console.error("Update profile error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+app.get("/api/supporter/dashboard", authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const db = getDB();
+
+    console.log("Fetching supporter dashboard for user:", userId);
+
+    // Get all contributions by this user
+    const contributions = await db
+      .collection("contributions")
+      .find({ supporterId: userId })
+      .toArray();
+
+    console.log("Found contributions:", contributions.length);
+
+    const approvedContributions = contributions.filter(
+      (c) => c.status === "approved",
+    );
+    const pendingContributions = contributions.filter(
+      (c) => c.status === "pending",
+    );
+
+    const stats = {
+      totalContributions: contributions.length,
+      pendingContributions: pendingContributions.length,
+      totalAmount: approvedContributions.reduce(
+        (sum, c) => sum + (c.amount || 0),
+        0,
+      ),
+    };
+
+    // Get campaign details for approved contributions
+    const approvedWithDetails = await Promise.all(
+      approvedContributions.map(async (c) => {
+        try {
+          const campaign = await db
+            .collection("campaigns")
+            .findOne({ _id: new ObjectId(c.campaignId) });
+          return {
+            ...c,
+            campaignTitle: campaign ? campaign.title : "Unknown Campaign",
+            creatorName: campaign ? campaign.creatorName : "Unknown",
+          };
+        } catch (err) {
+          return {
+            ...c,
+            campaignTitle: "Unknown Campaign",
+            creatorName: "Unknown",
+          };
+        }
+      }),
     );
 
     res.json({
       success: true,
-      message: 'Profile updated successfully',
-      user: updatedUser
+      stats,
+      approvedContributions: approvedWithDetails,
     });
   } catch (error) {
-    console.error('Update profile error:', error);
+    console.error("Dashboard error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Get supporter contributions - FIXED
+app.get("/api/supporter/contributions", authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const db = getDB();
+
+    const contributions = await db
+      .collection("contributions")
+      .find({ supporterId: userId })
+      .sort({ date: -1 })
+      .toArray();
+
+    const contributionsWithDetails = await Promise.all(
+      contributions.map(async (c) => {
+        try {
+          const campaign = await db
+            .collection("campaigns")
+            .findOne({ _id: new ObjectId(c.campaignId) });
+          return {
+            ...c,
+            campaignTitle: campaign ? campaign.title : "Unknown Campaign",
+            creatorName: campaign ? campaign.creatorName : "Unknown",
+          };
+        } catch (err) {
+          return {
+            ...c,
+            campaignTitle: "Unknown Campaign",
+            creatorName: "Unknown",
+          };
+        }
+      }),
+    );
+
+    res.json({
+      success: true,
+      contributions: contributionsWithDetails,
+    });
+  } catch (error) {
+    console.error("Contributions error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Get supporter payment history
+app.get("/api/supporter/payments", authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const db = getDB();
+
+    // Get all payments
+    const payments = await db
+      .collection("payments")
+      .find({ userId: userId })
+      .sort({ date: -1 })
+      .toArray();
+
+    // ★★★ Sync with contributions ★★★
+    const contributions = await db
+      .collection("contributions")
+      .find({ supporterId: userId })
+      .toArray();
+
+    const contributionMap = {};
+    for (const c of contributions) {
+      contributionMap[c._id.toString()] = c.status;
+    }
+
+    // Update payment status if needed
+    for (const payment of payments) {
+      if (payment.contributionId && contributionMap[payment.contributionId]) {
+        const contributionStatus = contributionMap[payment.contributionId];
+        let paymentStatus = contributionStatus;
+        
+        if (contributionStatus === 'approved') {
+          paymentStatus = 'completed';
+        } else if (contributionStatus === 'pending') {
+          paymentStatus = 'pending';
+        } else if (contributionStatus === 'rejected') {
+          paymentStatus = 'rejected';
+        }
+
+        if (payment.status !== paymentStatus) {
+          await db.collection("payments").updateOne(
+            { _id: payment._id },
+            { $set: { status: paymentStatus } }
+          );
+          payment.status = paymentStatus;
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      payments,
+    });
+  } catch (error) {
+    console.error("Payments error:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
