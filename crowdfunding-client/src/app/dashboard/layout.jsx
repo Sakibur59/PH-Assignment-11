@@ -1,8 +1,7 @@
-// client/src/app/dashboard/layout.jsx
 "use client";
 
 import { useSession } from "@/lib/auth-client";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { 
@@ -18,9 +17,11 @@ import {
   Megaphone, 
   FileText,
   LogOut,
-  ChevronDown,
   Bell,
-  Shield
+  Shield,
+  Menu,
+  X,
+  ArrowLeft
 } from "lucide-react";
 
 function Avatar({ user, size = 40 }) {
@@ -61,6 +62,7 @@ function CreditPill({ credits }) {
 export default function DashboardLayout({ children }) {
   const { data: session, isPending } = useSession();
   const router = useRouter();
+  const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
 
@@ -74,6 +76,29 @@ export default function DashboardLayout({ children }) {
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
+
+  useEffect(() => {
+    if (!isPending && session) {
+      const role = session.user?.role || "supporter";
+      const path = pathname || "";
+      
+      // If user is on /dashboard, redirect to their role-specific dashboard
+      if (path === "/dashboard" || path === "/dashboard/") {
+        router.push(`/dashboard/${role}`);
+        return;
+      }
+
+      // Check if user is trying to access wrong role's page
+      if (path.startsWith("/dashboard/") && path !== "/dashboard/unauthorized") {
+        const pathSegments = path.split("/");
+        const roleFromPath = pathSegments[2]; // dashboard/supporter/...
+        
+        if (roleFromPath && roleFromPath !== role && roleFromPath !== "unauthorized") {
+          router.push("/dashboard/unauthorized");
+        }
+      }
+    }
+  }, [session, isPending, pathname, router]);
 
   useEffect(() => {
     if (!isPending && !session) {
@@ -97,7 +122,7 @@ export default function DashboardLayout({ children }) {
   // Navigation based on role
   const getNavigation = () => {
     const baseNav = [
-      { name: "Home", href: "/dashboard", icon: Home },
+      { name: "Dashboard Home", href: `/dashboard/${role}`, icon: Home },
     ];
 
     if (role === "supporter") {
@@ -144,6 +169,13 @@ export default function DashboardLayout({ children }) {
     router.push("/");
   };
 
+  // Get current page title
+  const getPageTitle = () => {
+    const currentPath = pathname || "";
+    const navItem = navigation.find(item => currentPath.includes(item.href));
+    return navItem ? navItem.name : "Dashboard";
+  };
+
   return (
     <div className="min-h-screen bg-[#0B0D14] flex">
       {/* Sidebar */}
@@ -173,21 +205,28 @@ export default function DashboardLayout({ children }) {
           {/* Navigation */}
           <nav className="flex-1 overflow-y-auto py-4 px-3">
             <ul className="space-y-1">
-              {navigation.map((item) => (
-                <li key={item.name}>
-                  <Link
-                    href={item.href}
-                    className="flex items-center gap-3 px-3 py-2.5 rounded-sm text-[#9AA1AE] hover:text-[#F3EFE4] hover:bg-white/5 transition-all group"
-                  >
-                    <item.icon size={20} className="flex-shrink-0" />
-                    {sidebarOpen && (
-                      <span style={{ fontFamily: "'Space Grotesk', sans-serif" }} className="text-sm">
-                        {item.name}
-                      </span>
-                    )}
-                  </Link>
-                </li>
-              ))}
+              {navigation.map((item) => {
+                const isActive = pathname === item.href || pathname?.startsWith(item.href + "/");
+                return (
+                  <li key={item.name}>
+                    <Link
+                      href={item.href}
+                      className={`flex items-center gap-3 px-3 py-2.5 rounded-sm transition-all group ${
+                        isActive 
+                          ? "bg-[#D8A13B]/10 text-[#D8A13B]" 
+                          : "text-[#9AA1AE] hover:text-[#F3EFE4] hover:bg-white/5"
+                      }`}
+                    >
+                      <item.icon size={20} className="flex-shrink-0" />
+                      {sidebarOpen && (
+                        <span style={{ fontFamily: "'Space Grotesk', sans-serif" }} className="text-sm">
+                          {item.name}
+                        </span>
+                      )}
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
           </nav>
 
@@ -234,27 +273,37 @@ export default function DashboardLayout({ children }) {
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="text-[#9AA1AE] hover:text-[#F3EFE4] md:hidden"
+                className="text-[#9AA1AE] hover:text-[#F3EFE4] transition-colors"
               >
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M3 12h18M3 6h18M3 18h18" />
-                </svg>
+                {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
               </button>
-              <h1 className="text-[#F3EFE4] text-lg font-semibold" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
-                Dashboard
+              
+              {/* Back to Home Button */}
+              <Link
+                href="/"
+                className="flex items-center gap-2 text-[#9AA1AE] hover:text-[#D8A13B] transition-colors text-sm group"
+                style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+              >
+                <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform" />
+                <span className="hidden sm:inline">Back to Home</span>
+                <span className="sm:hidden">Home</span>
+              </Link>
+
+              <div className="hidden md:block h-6 w-px bg-white/10" />
+              
+              <h1 className="text-[#F3EFE4] text-lg font-semibold hidden md:block" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                {getPageTitle()}
               </h1>
             </div>
 
             <div className="flex items-center gap-4">
               <CreditPill credits={user.credits} />
               
-              {/* Notification */}
               <button className="relative text-[#9AA1AE] hover:text-[#F3EFE4] transition-colors">
                 <Bell size={20} />
                 <span className="absolute -top-1 -right-1 w-2 h-2 bg-[#D8A13B] rounded-full"></span>
               </button>
 
-              {/* User Avatar (Mobile) */}
               <div className="md:hidden">
                 <Avatar user={user} size={32} />
               </div>
