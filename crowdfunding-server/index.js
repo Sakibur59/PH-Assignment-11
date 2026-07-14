@@ -966,6 +966,92 @@ app.get("/api/creator/withdrawals", authMiddleware, async (req, res) => {
   }
 });
 
+// Update user profile
+app.put('/api/user/profile', authMiddleware, async (req, res) => {
+  try {
+    const { name, image } = req.body;
+    const db = getDB();
+
+    console.log('Updating profile for user:', req.user.email);
+
+    if (!name) {
+      return res.status(400).json({
+        success: false,
+        message: 'Name is required'
+      });
+    }
+    let user = await db.collection('user').findOne({ 
+      email: req.user.email 
+    });
+    if (!user) {
+      user = await db.collection('user').findOne({ 
+        _id: req.user.id 
+      });
+    }
+    if (!user) {
+      try {
+        const objectId = new ObjectId(req.user.id);
+        user = await db.collection('user').findOne({ 
+          _id: objectId 
+        });
+      } catch (err) {
+        console.log('ObjectId conversion failed');
+      }
+    }
+
+    if (!user) {
+      const newUser = {
+        _id: req.user.id,
+        name: req.user.name,
+        email: req.user.email,
+        emailVerified: req.user.emailVerified || false,
+        image: req.user.image || '',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        role: req.user.role || 'supporter',
+        credits: req.user.credits || 50
+      };
+      
+      await db.collection('user').insertOne(newUser);
+      user = newUser;
+      console.log('Created new user in DB:', user);
+    }
+
+    const updateData = {
+      name: name,
+      updatedAt: new Date()
+    };
+
+    if (image) {
+      updateData.image = image;
+    }
+
+    const result = await db.collection('user').updateOne(
+      { _id: user._id },
+      { $set: updateData }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found during update'
+      });
+    }
+
+    const updatedUser = await db.collection('user').findOne(
+      { _id: user._id }
+    );
+
+    res.json({
+      success: true,
+      message: 'Profile updated successfully',
+      user: updatedUser
+    });
+  } catch (error) {
+    console.error('Update profile error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
 // Test route
 app.get("/", (req, res) => {
   res.send("Crowdfunding server running");

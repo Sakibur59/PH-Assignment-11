@@ -217,7 +217,7 @@ export default function Navbar() {
                     </div>
 
                     <Link
-                      href="/dashboard"
+                      href={`/dashboard/${user?.role || "supporter"}/profile`}
                       onClick={() => setDropdownOpen(false)}
                       className="flex items-center gap-2.5 px-4 py-3 text-sm text-[#F3EFE4] hover:bg-white/5 transition-colors"
                       style={{ fontFamily: "'Space Grotesk', sans-serif" }}
