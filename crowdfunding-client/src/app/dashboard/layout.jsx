@@ -82,16 +82,14 @@ export default function DashboardLayout({ children }) {
       const role = session.user?.role || "supporter";
       const path = pathname || "";
       
-      // If user is on /dashboard, redirect to their role-specific dashboard
       if (path === "/dashboard" || path === "/dashboard/") {
         router.push(`/dashboard/${role}`);
         return;
       }
 
-      // Check if user is trying to access wrong role's page
       if (path.startsWith("/dashboard/") && path !== "/dashboard/unauthorized") {
         const pathSegments = path.split("/");
-        const roleFromPath = pathSegments[2]; // dashboard/supporter/...
+        const roleFromPath = pathSegments[2];
         
         if (roleFromPath && roleFromPath !== role && roleFromPath !== "unauthorized") {
           router.push("/dashboard/unauthorized");
@@ -119,10 +117,14 @@ export default function DashboardLayout({ children }) {
   const user = session.user;
   const role = user.role || "supporter";
 
-  // Navigation based on role
   const getNavigation = () => {
     const baseNav = [
-      { name: "Dashboard Home", href: `/dashboard/${role}`, icon: Home },
+      { 
+        name: "Dashboard Home", 
+        href: `/dashboard/${role}`, 
+        icon: Home,
+        exact: true
+      },
     ];
 
     if (role === "supporter") {
@@ -160,6 +162,13 @@ export default function DashboardLayout({ children }) {
 
   const navigation = getNavigation();
 
+  const isActive = (item) => {
+    if (item.exact) {
+      return pathname === item.href;
+    }
+    return pathname?.startsWith(item.href);
+  };
+
   const handleLogout = async () => {
     const { signOut } = await import("@/lib/auth-client");
     await signOut();
@@ -169,10 +178,14 @@ export default function DashboardLayout({ children }) {
     router.push("/");
   };
 
-  // Get current page title
   const getPageTitle = () => {
     const currentPath = pathname || "";
-    const navItem = navigation.find(item => currentPath.includes(item.href));
+    const navItem = navigation.find(item => {
+      if (item.exact) {
+        return currentPath === item.href;
+      }
+      return currentPath.startsWith(item.href);
+    });
     return navItem ? navItem.name : "Dashboard";
   };
 
@@ -206,13 +219,13 @@ export default function DashboardLayout({ children }) {
           <nav className="flex-1 overflow-y-auto py-4 px-3">
             <ul className="space-y-1">
               {navigation.map((item) => {
-                const isActive = pathname === item.href || pathname?.startsWith(item.href + "/");
+                const active = isActive(item);
                 return (
                   <li key={item.name}>
                     <Link
                       href={item.href}
                       className={`flex items-center gap-3 px-3 py-2.5 rounded-sm transition-all group ${
-                        isActive 
+                        active 
                           ? "bg-[#D8A13B]/10 text-[#D8A13B]" 
                           : "text-[#9AA1AE] hover:text-[#F3EFE4] hover:bg-white/5"
                       }`}
@@ -278,7 +291,6 @@ export default function DashboardLayout({ children }) {
                 {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
               </button>
               
-              {/* Back to Home Button */}
               <Link
                 href="/"
                 className="flex items-center gap-2 text-[#9AA1AE] hover:text-[#D8A13B] transition-colors text-sm group"
