@@ -5,6 +5,7 @@ import { useState, useRef, useEffect } from "react";
 import { useSession, signOut } from "@/lib/auth-client";
 import { useRouter } from "next/navigation";
 import { Menu, X, ChevronDown, LogOut, LayoutDashboard } from "lucide-react";
+import NotificationBell from "./NotificationBell";
 
 const GITHUB_CLIENT_REPO = "https://github.com/Sakibur59/PH-Assignment-11";
 
@@ -151,6 +152,7 @@ export default function Navbar() {
               </Link>
 
               <CreditPill credits={user.credits} />
+              <NotificationBell />
 
               <a
                 href={GITHUB_CLIENT_REPO}

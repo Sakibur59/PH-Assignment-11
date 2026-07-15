@@ -4,25 +4,26 @@ import { useSession } from "@/lib/auth-client";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { 
-  Home, 
-  Compass, 
-  Heart, 
-  CreditCard, 
-  History, 
-  PlusCircle, 
-  FolderOpen, 
-  Wallet, 
-  Users, 
-  Megaphone, 
+import {
+  Home,
+  Compass,
+  Heart,
+  CreditCard,
+  History,
+  PlusCircle,
+  FolderOpen,
+  Wallet,
+  Users,
+  Megaphone,
   FileText,
   LogOut,
   Bell,
   Shield,
   Menu,
   X,
-  ArrowLeft
+  ArrowLeft,
 } from "lucide-react";
+import NotificationBell from "@/components/NotificationBell";
 
 function Avatar({ user, size = 40 }) {
   if (user?.image) {
@@ -39,7 +40,11 @@ function Avatar({ user, size = 40 }) {
   return (
     <div
       className="rounded-full bg-[#D8A13B] text-[#14171F] flex items-center justify-center font-semibold"
-      style={{ width: size, height: size, fontFamily: "'Space Grotesk', sans-serif" }}
+      style={{
+        width: size,
+        height: size,
+        fontFamily: "'Space Grotesk', sans-serif",
+      }}
     >
       {initial}
     </div>
@@ -81,17 +86,24 @@ export default function DashboardLayout({ children }) {
     if (!isPending && session) {
       const role = session.user?.role || "supporter";
       const path = pathname || "";
-      
+
       if (path === "/dashboard" || path === "/dashboard/") {
         router.push(`/dashboard/${role}`);
         return;
       }
 
-      if (path.startsWith("/dashboard/") && path !== "/dashboard/unauthorized") {
+      if (
+        path.startsWith("/dashboard/") &&
+        path !== "/dashboard/unauthorized"
+      ) {
         const pathSegments = path.split("/");
         const roleFromPath = pathSegments[2];
-        
-        if (roleFromPath && roleFromPath !== role && roleFromPath !== "unauthorized") {
+
+        if (
+          roleFromPath &&
+          roleFromPath !== role &&
+          roleFromPath !== "unauthorized"
+        ) {
           router.push("/dashboard/unauthorized");
         }
       }
@@ -119,31 +131,63 @@ export default function DashboardLayout({ children }) {
 
   const getNavigation = () => {
     const baseNav = [
-      { 
-        name: "Dashboard Home", 
-        href: `/dashboard/${role}`, 
+      {
+        name: "Dashboard Home",
+        href: `/dashboard/${role}`,
         icon: Home,
-        exact: true
+        exact: true,
       },
     ];
 
     if (role === "supporter") {
       return [
         ...baseNav,
-        { name: "Explore Campaigns", href: "/dashboard/supporter/campaigns", icon: Compass },
-        { name: "My Contributions", href: "/dashboard/supporter/contributions", icon: Heart },
-        { name: "Purchase Credit", href: "/dashboard/supporter/purchase-credit", icon: CreditCard },
-        { name: "Payment History", href: "/dashboard/supporter/payment-history", icon: History },
+        {
+          name: "Explore Campaigns",
+          href: "/dashboard/supporter/campaigns",
+          icon: Compass,
+        },
+        {
+          name: "My Contributions",
+          href: "/dashboard/supporter/contributions",
+          icon: Heart,
+        },
+        {
+          name: "Purchase Credit",
+          href: "/dashboard/supporter/purchase-credit",
+          icon: CreditCard,
+        },
+        {
+          name: "Payment History",
+          href: "/dashboard/supporter/payment-history",
+          icon: History,
+        },
       ];
     }
 
     if (role === "creator") {
       return [
         ...baseNav,
-        { name: "Add New Campaign", href: "/dashboard/creator/add-campaign", icon: PlusCircle },
-        { name: "My Campaigns", href: "/dashboard/creator/my-campaigns", icon: FolderOpen },
-        { name: "Withdrawals", href: "/dashboard/creator/withdrawals", icon: Wallet },
-        { name: "Payment History", href: "/dashboard/creator/payment-history", icon: History },
+        {
+          name: "Add New Campaign",
+          href: "/dashboard/creator/add-campaign",
+          icon: PlusCircle,
+        },
+        {
+          name: "My Campaigns",
+          href: "/dashboard/creator/my-campaigns",
+          icon: FolderOpen,
+        },
+        {
+          name: "Withdrawals",
+          href: "/dashboard/creator/withdrawals",
+          icon: Wallet,
+        },
+        {
+          name: "Payment History",
+          href: "/dashboard/creator/payment-history",
+          icon: History,
+        },
       ];
     }
 
@@ -151,8 +195,16 @@ export default function DashboardLayout({ children }) {
       return [
         ...baseNav,
         { name: "Manage Users", href: "/dashboard/admin/users", icon: Users },
-        { name: "Manage Campaigns", href: "/dashboard/admin/campaigns", icon: Megaphone },
-        { name: "Withdrawal Requests", href: "/dashboard/admin/withdrawal-requests", icon: Wallet },
+        {
+          name: "Manage Campaigns",
+          href: "/dashboard/admin/campaigns",
+          icon: Megaphone,
+        },
+        {
+          name: "Withdrawal Requests",
+          href: "/dashboard/admin/withdrawal-requests",
+          icon: Wallet,
+        },
         { name: "Reports", href: "/dashboard/admin/reports", icon: FileText },
       ];
     }
@@ -180,7 +232,7 @@ export default function DashboardLayout({ children }) {
 
   const getPageTitle = () => {
     const currentPath = pathname || "";
-    const navItem = navigation.find(item => {
+    const navItem = navigation.find((item) => {
       if (item.exact) {
         return currentPath === item.href;
       }
@@ -225,14 +277,17 @@ export default function DashboardLayout({ children }) {
                     <Link
                       href={item.href}
                       className={`flex items-center gap-3 px-3 py-2.5 rounded-sm transition-all group ${
-                        active 
-                          ? "bg-[#D8A13B]/10 text-[#D8A13B]" 
+                        active
+                          ? "bg-[#D8A13B]/10 text-[#D8A13B]"
                           : "text-[#9AA1AE] hover:text-[#F3EFE4] hover:bg-white/5"
                       }`}
                     >
                       <item.icon size={20} className="flex-shrink-0" />
                       {sidebarOpen && (
-                        <span style={{ fontFamily: "'Space Grotesk', sans-serif" }} className="text-sm">
+                        <span
+                          style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+                          className="text-sm"
+                        >
                           {item.name}
                         </span>
                       )}
@@ -249,15 +304,27 @@ export default function DashboardLayout({ children }) {
               <Avatar user={user} size={sidebarOpen ? 40 : 32} />
               {sidebarOpen && (
                 <div className="flex-1 min-w-0">
-                  <p className="text-[#F3EFE4] text-sm truncate" style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 500 }}>
+                  <p
+                    className="text-[#F3EFE4] text-sm truncate"
+                    style={{
+                      fontFamily: "'Space Grotesk', sans-serif",
+                      fontWeight: 500,
+                    }}
+                  >
                     {user.name}
                   </p>
-                  <p className="text-[#9AA1AE] text-xs truncate" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                  <p
+                    className="text-[#9AA1AE] text-xs truncate"
+                    style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+                  >
                     {user.email}
                   </p>
                   <div className="flex items-center gap-1 mt-1">
                     <Shield size={12} className="text-[#D8A13B]" />
-                    <span className="text-[#D8A13B] text-xs capitalize" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                    <span
+                      className="text-[#D8A13B] text-xs capitalize"
+                      style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+                    >
                       {role}
                     </span>
                   </div>
@@ -290,32 +357,33 @@ export default function DashboardLayout({ children }) {
               >
                 {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
               </button>
-              
+
               <Link
                 href="/"
                 className="flex items-center gap-2 text-[#9AA1AE] hover:text-[#D8A13B] transition-colors text-sm group"
                 style={{ fontFamily: "'Space Grotesk', sans-serif" }}
               >
-                <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform" />
+                <ArrowLeft
+                  size={18}
+                  className="group-hover:-translate-x-1 transition-transform"
+                />
                 <span className="hidden sm:inline">Back to Home</span>
                 <span className="sm:hidden">Home</span>
               </Link>
 
               <div className="hidden md:block h-6 w-px bg-white/10" />
-              
-              <h1 className="text-[#F3EFE4] text-lg font-semibold hidden md:block" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+
+              <h1
+                className="text-[#F3EFE4] text-lg font-semibold hidden md:block"
+                style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+              >
                 {getPageTitle()}
               </h1>
             </div>
 
             <div className="flex items-center gap-4">
               <CreditPill credits={user.credits} />
-              
-              <button className="relative text-[#9AA1AE] hover:text-[#F3EFE4] transition-colors">
-                <Bell size={20} />
-                <span className="absolute -top-1 -right-1 w-2 h-2 bg-[#D8A13B] rounded-full"></span>
-              </button>
-
+              <NotificationBell />
               <div className="md:hidden">
                 <Avatar user={user} size={32} />
               </div>
@@ -324,22 +392,29 @@ export default function DashboardLayout({ children }) {
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 p-4 md:p-6 overflow-y-auto">
-          {children}
-        </main>
+        <main className="flex-1 p-4 md:p-6 overflow-y-auto">{children}</main>
 
         {/* Footer */}
         <footer className="bg-[#14171F] border-t border-white/5 px-4 md:px-6 py-4">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
-            <p className="text-xs text-[#9AA1AE]/50" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+            <p
+              className="text-xs text-[#9AA1AE]/50"
+              style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+            >
               © {new Date().getFullYear()} CrowdFund. All rights reserved.
             </p>
             <div className="flex items-center gap-4 text-[10px] text-[#9AA1AE]/40 uppercase tracking-wider">
-              <Link href="/privacy" className="hover:text-[#D8A13B] transition-colors">
+              <Link
+                href="/privacy"
+                className="hover:text-[#D8A13B] transition-colors"
+              >
                 Privacy
               </Link>
               <span className="w-px h-3 bg-white/10"></span>
-              <Link href="/terms" className="hover:text-[#D8A13B] transition-colors">
+              <Link
+                href="/terms"
+                className="hover:text-[#D8A13B] transition-colors"
+              >
                 Terms
               </Link>
             </div>
