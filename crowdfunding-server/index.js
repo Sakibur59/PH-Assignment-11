@@ -222,15 +222,39 @@ app.post("/api/create-checkout-session", authMiddleware, async (req, res) => {
 app.get("/api/campaigns/approved", authMiddleware, async (req, res) => {
   try {
     const db = getDB();
+    const { search, category } = req.query;
+
+    console.log('=== GET APPROVED CAMPAIGNS ===');
+    console.log('Search:', search);
+    console.log('Category:', category);
+
+    // Build query
+    const query = {
+      status: "approved",
+      deadline: { $gt: new Date() }
+    };
+
+    // Add category filter
+    if (category && category !== 'all') {
+      query.category = category;
+    }
+
+    // Add search filter
+    if (search) {
+      query.$or = [
+        { title: { $regex: search, $options: 'i' } },
+        { story: { $regex: search, $options: 'i' } },
+        { creatorName: { $regex: search, $options: 'i' } }
+      ];
+    }
 
     const campaigns = await db
       .collection("campaigns")
-      .find({
-        status: "approved",
-        deadline: { $gt: new Date() },
-      })
+      .find(query)
       .sort({ createdAt: -1 })
       .toArray();
+
+    console.log('Campaigns found:', campaigns.length);
 
     const campaignsWithDetails = await Promise.all(
       campaigns.map(async (campaign) => {
@@ -255,7 +279,7 @@ app.get("/api/campaigns/approved", authMiddleware, async (req, res) => {
             raised: 0,
           };
         }
-      }),
+      })
     );
 
     res.json({
@@ -267,7 +291,6 @@ app.get("/api/campaigns/approved", authMiddleware, async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 });
-
 // 8. Get single campaign details
 app.get("/api/campaigns/:id", authMiddleware, async (req, res) => {
   try {
