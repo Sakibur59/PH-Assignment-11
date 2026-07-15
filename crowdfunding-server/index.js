@@ -6,6 +6,8 @@ const { auth } = require("./auth");
 const { toNodeHandler } = require("better-auth/node");
 const { ObjectId } = require("mongodb");
 
+const { createNotification } = require("./utils/notification");
+
 const app = express();
 
 app.use(
@@ -224,27 +226,27 @@ app.get("/api/campaigns/approved", authMiddleware, async (req, res) => {
     const db = getDB();
     const { search, category } = req.query;
 
-    console.log('=== GET APPROVED CAMPAIGNS ===');
-    console.log('Search:', search);
-    console.log('Category:', category);
+    console.log("=== GET APPROVED CAMPAIGNS ===");
+    console.log("Search:", search);
+    console.log("Category:", category);
 
     // Build query
     const query = {
       status: "approved",
-      deadline: { $gt: new Date() }
+      deadline: { $gt: new Date() },
     };
 
     // Add category filter
-    if (category && category !== 'all') {
+    if (category && category !== "all") {
       query.category = category;
     }
 
     // Add search filter
     if (search) {
       query.$or = [
-        { title: { $regex: search, $options: 'i' } },
-        { story: { $regex: search, $options: 'i' } },
-        { creatorName: { $regex: search, $options: 'i' } }
+        { title: { $regex: search, $options: "i" } },
+        { story: { $regex: search, $options: "i" } },
+        { creatorName: { $regex: search, $options: "i" } },
       ];
     }
 
@@ -254,7 +256,7 @@ app.get("/api/campaigns/approved", authMiddleware, async (req, res) => {
       .sort({ createdAt: -1 })
       .toArray();
 
-    console.log('Campaigns found:', campaigns.length);
+    console.log("Campaigns found:", campaigns.length);
 
     const campaignsWithDetails = await Promise.all(
       campaigns.map(async (campaign) => {
@@ -279,7 +281,7 @@ app.get("/api/campaigns/approved", authMiddleware, async (req, res) => {
             raised: 0,
           };
         }
-      })
+      }),
     );
 
     res.json({
@@ -331,7 +333,79 @@ app.get("/api/campaigns/:id", authMiddleware, async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 });
+// Creator Dashboard
+app.get("/api/creator/dashboard", authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const db = getDB();
 
+    console.log('=== CREATOR DASHBOARD ===');
+    console.log('User ID:', userId);
+
+    // Convert userId to ObjectId
+    const userObjectId = new ObjectId(userId);
+    
+    // Get campaigns
+    const campaigns = await db
+      .collection("campaigns")
+      .find({ creatorId: userId })
+      .toArray();
+
+    console.log('Campaigns found:', campaigns.length);
+
+    const totalCampaigns = campaigns.length;
+    const activeCampaigns = campaigns.filter(
+      (c) => new Date(c.deadline) > new Date()
+    ).length;
+
+    // Calculate total raised
+    let totalRaised = 0;
+    for (const campaign of campaigns) {
+      const contributions = await db
+        .collection("contributions")
+        .find({
+          campaignId: campaign._id.toString(),
+          status: "approved",
+        })
+        .toArray();
+      totalRaised += contributions.reduce((sum, c) => sum + (c.amount || 0), 0);
+    }
+
+    // Get pending contributions
+    const pendingContributions = [];
+    for (const campaign of campaigns) {
+      const contributions = await db
+        .collection("contributions")
+        .find({
+          campaignId: campaign._id.toString(),
+          status: "pending",
+        })
+        .toArray();
+      pendingContributions.push(
+        ...contributions.map((c) => ({
+          ...c,
+          campaignTitle: campaign.title,
+        }))
+      );
+    }
+
+    console.log('Total raised:', totalRaised);
+    console.log('Pending contributions:', pendingContributions.length);
+
+    res.json({
+      success: true,
+      stats: {
+        totalCampaigns,
+        activeCampaigns,
+        totalRaised,
+      },
+      pendingContributions,
+    });
+  } catch (error) {
+    console.error("Creator dashboard error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
 // 9. Contribute to campaign
 app.post("/api/campaigns/contribute", authMiddleware, async (req, res) => {
   try {
@@ -339,8 +413,8 @@ app.post("/api/campaigns/contribute", authMiddleware, async (req, res) => {
     const { campaignId, amount } = req.body;
     const userId = req.user.id;
 
-    console.log('=== CONTRIBUTE TO CAMPAIGN ===');
-    console.log('User ID (string):', userId);
+    console.log('=== CONTRIBUTE ===');
+    console.log('User ID:', userId);
     console.log('Campaign ID:', campaignId);
     console.log('Amount:', amount);
 
@@ -351,15 +425,11 @@ app.post("/api/campaigns/contribute", authMiddleware, async (req, res) => {
       });
     }
 
-    // ★★★ IMPORTANT: Convert userId to ObjectId ★★★
+    // ★★★ Convert userId to ObjectId ★★★
     const userObjectId = new ObjectId(userId);
-    console.log('User ObjectId:', userObjectId);
-
-    // Find user using ObjectId
     const user = await db.collection("user").findOne({ _id: userObjectId });
     
     if (!user) {
-      console.log('User not found with ObjectId:', userObjectId);
       return res.status(404).json({
         success: false,
         message: "User not found",
@@ -372,7 +442,7 @@ app.post("/api/campaigns/contribute", authMiddleware, async (req, res) => {
     if ((user.credits || 0) < amount) {
       return res.status(400).json({
         success: false,
-        message: "Insufficient credits. Please purchase more credits.",
+        message: "Insufficient credits",
       });
     }
 
@@ -401,7 +471,7 @@ app.post("/api/campaigns/contribute", authMiddleware, async (req, res) => {
     const contribution = {
       campaignId: campaignId,
       campaignTitle: campaign.title,
-      supporterId: userId, // string রাখতে পারেন বা userObjectId
+      supporterId: userId,
       supporterName: user.name,
       supporterEmail: user.email,
       creatorName: campaign.creatorName || "Unknown",
@@ -414,9 +484,7 @@ app.post("/api/campaigns/contribute", authMiddleware, async (req, res) => {
     const result = await db.collection("contributions").insertOne(contribution);
     const contributionId = result.insertedId.toString();
 
-    console.log('Contribution created with ID:', contributionId);
-
-    // Create payment record
+    // Create payment
     await db.collection("payments").insertOne({
       userId: userId,
       type: "contribution",
@@ -426,10 +494,38 @@ app.post("/api/campaigns/contribute", authMiddleware, async (req, res) => {
       campaignTitle: campaign.title,
       date: new Date(),
       status: "pending",
-      contributionId: contributionId
+      contributionId: contributionId,
     });
 
-    console.log('Payment record created');
+    // ★★★ CREATE NOTIFICATION FOR CREATOR ★★★
+    await createNotification({
+      message: `💰 New contribution of $${amount} from ${user.name} to "${campaign.title}"`,
+      toEmail: campaign.creatorEmail,
+      actionRoute: `/dashboard/creator/dashboard`,
+      type: "info",
+      metadata: {
+        contributionId: contributionId,
+        campaignId: campaignId,
+        amount: amount,
+        supporterId: userId,
+        supporterName: user.name,
+      },
+    });
+
+    // ★★★ CREATE NOTIFICATION FOR SUPPORTER (self) ★★★
+    await createNotification({
+      message: `💰 You contributed $${amount} to "${campaign.title}". Waiting for creator approval.`,
+      toEmail: user.email,
+      actionRoute: `/dashboard/supporter/contributions`,
+      type: "info",
+      metadata: {
+        contributionId: contributionId,
+        campaignId: campaignId,
+        amount: amount,
+      },
+    });
+
+    console.log('Contribution successful!');
 
     res.json({
       success: true,
@@ -441,71 +537,7 @@ app.post("/api/campaigns/contribute", authMiddleware, async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 });
-
 // 10. Get creator dashboard data
-app.get("/api/creator/dashboard", authMiddleware, async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const db = getDB();
-
-    // Get all campaigns by this creator
-    const campaigns = await db
-      .collection("campaigns")
-      .find({ creatorId: userId })
-      .toArray();
-
-    const totalCampaigns = campaigns.length;
-    const activeCampaigns = campaigns.filter(
-      (c) => new Date(c.deadline) > new Date(),
-    ).length;
-
-    // Calculate total raised across all campaigns
-    let totalRaised = 0;
-    for (const campaign of campaigns) {
-      const contributions = await db
-        .collection("contributions")
-        .find({
-          campaignId: campaign._id.toString(),
-          status: "approved",
-        })
-        .toArray();
-      totalRaised += contributions.reduce((sum, c) => sum + (c.amount || 0), 0);
-    }
-
-    // Get pending contributions for creator's campaigns
-    const pendingContributions = [];
-    for (const campaign of campaigns) {
-      const contributions = await db
-        .collection("contributions")
-        .find({
-          campaignId: campaign._id.toString(),
-          status: "pending",
-        })
-        .toArray();
-      pendingContributions.push(
-        ...contributions.map((c) => ({
-          ...c,
-          campaignTitle: campaign.title,
-        })),
-      );
-    }
-
-    res.json({
-      success: true,
-      stats: {
-        totalCampaigns,
-        activeCampaigns,
-        totalRaised,
-      },
-      pendingContributions,
-    });
-  } catch (error) {
-    console.error("Creator dashboard error:", error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// 11. Approve contribution
 app.post(
   "/api/creator/contribution/approve",
   authMiddleware,
@@ -523,59 +555,62 @@ app.post(
       const contribution = await db
         .collection("contributions")
         .findOne({ _id: new ObjectId(contributionId) });
-        
+
       if (!contribution) {
         return res
           .status(404)
           .json({ success: false, message: "Contribution not found" });
       }
 
-      console.log('=== APPROVE CONTRIBUTION ===');
-      console.log('Contribution ID:', contributionId);
-      console.log('Status:', contribution.status);
-
-      // Update contribution status
+      // Update contribution
       await db
         .collection("contributions")
         .updateOne(
           { _id: new ObjectId(contributionId) },
-          { $set: { status: "approved" } }
+          { $set: { status: "approved" } },
         );
 
-      // Update campaign raised amount
+      // Update campaign raised
       await db
         .collection("campaigns")
         .updateOne(
           { _id: new ObjectId(contribution.campaignId) },
-          { $inc: { raised: contribution.amount } }
+          { $inc: { raised: contribution.amount } },
         );
 
-      // ★★★ Update payment by contributionId ★★★
-      const paymentUpdate = await db.collection("payments").updateOne(
-        { 
+      // Update payment
+      await db
+        .collection("payments")
+        .updateOne(
+          { contributionId: contributionId, type: "contribution" },
+          { $set: { status: "completed" } },
+        );
+
+      // ★★★ CREATE NOTIFICATION FOR SUPPORTER ★★★
+      await createNotification({
+        message: `✅ Your Contribution of $${contribution.amount} to "${contribution.campaignTitle}" was approved by ${contribution.creatorName}`,
+        toEmail: contribution.supporterEmail,
+        actionRoute: `/dashboard/supporter/contributions`,
+        type: "success",
+        metadata: {
           contributionId: contributionId,
-          type: "contribution"
-        },
-        { $set: { status: "completed" } }
-      );
-
-      console.log('Payment update result:', paymentUpdate);
-
-      // If no payment found, create one
-      if (paymentUpdate.matchedCount === 0) {
-        console.log('No payment found, creating new...');
-        await db.collection("payments").insertOne({
-          userId: contribution.supporterId,
-          type: "contribution",
-          credits: -contribution.amount,
-          amount: contribution.amount,
           campaignId: contribution.campaignId,
-          campaignTitle: contribution.campaignTitle,
-          date: new Date(),
-          status: "completed",
-          contributionId: contributionId
-        });
-      }
+          amount: contribution.amount,
+        },
+      });
+
+      // ★★★ CREATE NOTIFICATION FOR CREATOR (self) ★★★
+      await createNotification({
+        message: `✅ You approved a contribution of $${contribution.amount} from ${contribution.supporterName} for "${contribution.campaignTitle}"`,
+        toEmail: contribution.creatorEmail,
+        actionRoute: `/dashboard/creator`,
+        type: "success",
+        metadata: {
+          contributionId: contributionId,
+          campaignId: contribution.campaignId,
+          amount: contribution.amount,
+        },
+      });
 
       res.json({
         success: true,
@@ -585,7 +620,93 @@ app.post(
       console.error("Approve contribution error:", error);
       res.status(500).json({ success: false, message: error.message });
     }
-  }
+  },
+);
+
+// 11. Approve contribution
+app.post(
+  "/api/creator/contribution/reject",
+  authMiddleware,
+  async (req, res) => {
+    try {
+      const { contributionId } = req.body;
+      const db = getDB();
+
+      if (!contributionId) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Contribution ID required" });
+      }
+
+      const contribution = await db
+        .collection("contributions")
+        .findOne({ _id: new ObjectId(contributionId) });
+
+      if (!contribution) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Contribution not found" });
+      }
+
+      // Update contribution
+      await db
+        .collection("contributions")
+        .updateOne(
+          { _id: new ObjectId(contributionId) },
+          { $set: { status: "rejected" } },
+        );
+
+      // Refund credits
+      await db
+        .collection("user")
+        .updateOne(
+          { _id: contribution.supporterId },
+          { $inc: { credits: contribution.amount } },
+        );
+
+      // Update payment
+      await db
+        .collection("payments")
+        .updateOne(
+          { contributionId: contributionId, type: "contribution" },
+          { $set: { status: "rejected" } },
+        );
+
+      // ★★★ CREATE NOTIFICATION FOR SUPPORTER ★★★
+      await createNotification({
+        message: `❌ Your Contribution of $${contribution.amount} to "${contribution.campaignTitle}" was rejected by ${contribution.creatorName}. Credits have been refunded.`,
+        toEmail: contribution.supporterEmail,
+        actionRoute: `/dashboard/supporter/contributions`,
+        type: "error",
+        metadata: {
+          contributionId: contributionId,
+          campaignId: contribution.campaignId,
+          amount: contribution.amount,
+        },
+      });
+
+      // ★★★ CREATE NOTIFICATION FOR CREATOR (self) ★★★
+      await createNotification({
+        message: `❌ You rejected a contribution of $${contribution.amount} from ${contribution.supporterName} for "${contribution.campaignTitle}"`,
+        toEmail: contribution.creatorEmail,
+        actionRoute: `/dashboard/creator`,
+        type: "warning",
+        metadata: {
+          contributionId: contributionId,
+          campaignId: contribution.campaignId,
+          amount: contribution.amount,
+        },
+      });
+
+      res.json({
+        success: true,
+        message: "Contribution rejected and credits refunded",
+      });
+    } catch (error) {
+      console.error("Reject contribution error:", error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  },
 );
 
 // 12. Reject contribution
@@ -606,22 +727,22 @@ app.post(
       const contribution = await db
         .collection("contributions")
         .findOne({ _id: new ObjectId(contributionId) });
-        
+
       if (!contribution) {
         return res
           .status(404)
           .json({ success: false, message: "Contribution not found" });
       }
 
-      console.log('=== REJECT CONTRIBUTION ===');
-      console.log('Contribution ID:', contributionId);
+      console.log("=== REJECT CONTRIBUTION ===");
+      console.log("Contribution ID:", contributionId);
 
       // Update contribution status
       await db
         .collection("contributions")
         .updateOne(
           { _id: new ObjectId(contributionId) },
-          { $set: { status: "rejected" } }
+          { $set: { status: "rejected" } },
         );
 
       // Refund credits to supporter
@@ -629,23 +750,23 @@ app.post(
         .collection("user")
         .updateOne(
           { _id: new ObjectId(contribution.supporterId) },
-          { $inc: { credits: contribution.amount } }
+          { $inc: { credits: contribution.amount } },
         );
 
       // ★★★ Update payment by contributionId ★★★
       const paymentUpdate = await db.collection("payments").updateOne(
-        { 
+        {
           contributionId: contributionId,
-          type: "contribution"
+          type: "contribution",
         },
-        { $set: { status: "rejected" } }
+        { $set: { status: "rejected" } },
       );
 
-      console.log('Payment update result:', paymentUpdate);
+      console.log("Payment update result:", paymentUpdate);
 
       // If no payment found, create one
       if (paymentUpdate.matchedCount === 0) {
-        console.log('No payment found, creating new...');
+        console.log("No payment found, creating new...");
         await db.collection("payments").insertOne({
           userId: contribution.supporterId,
           type: "contribution",
@@ -655,7 +776,7 @@ app.post(
           campaignTitle: contribution.campaignTitle,
           date: new Date(),
           status: "rejected",
-          contributionId: contributionId
+          contributionId: contributionId,
         });
       }
 
@@ -667,7 +788,7 @@ app.post(
       console.error("Reject contribution error:", error);
       res.status(500).json({ success: false, message: error.message });
     }
-  }
+  },
 );
 
 // 13. Add new campaign
@@ -876,7 +997,6 @@ app.post("/api/creator/withdraw", authMiddleware, async (req, res) => {
     const userEmail = req.user.email;
     const db = getDB();
 
-
     if (!creditsToWithdraw || !paymentSystem || !accountNumber) {
       return res.status(400).json({
         success: false,
@@ -914,16 +1034,12 @@ app.post("/api/creator/withdraw", authMiddleware, async (req, res) => {
       totalRaised += contributions.reduce((sum, c) => sum + (c.amount || 0), 0);
     }
 
-
-
-
     if (totalRaised < 200) {
       return res.status(400).json({
         success: false,
         message: "Minimum 200 credits required for withdrawal",
       });
     }
-
 
     if (parseFloat(creditsToWithdraw) > totalRaised) {
       return res.status(400).json({
@@ -944,8 +1060,6 @@ app.post("/api/creator/withdraw", authMiddleware, async (req, res) => {
       (sum, w) => sum + w.withdrawalCredits,
       0,
     );
-
-  
 
     if (pendingCredits + parseFloat(creditsToWithdraw) > totalRaised) {
       return res.status(400).json({
@@ -1203,28 +1317,20 @@ app.get("/api/supporter/payments", authMiddleware, async (req, res) => {
     const userId = req.user.id;
     const db = getDB();
 
- 
     const userObjectId = new ObjectId(userId);
-
 
     const payments = await db
       .collection("payments")
-      .find({ 
-        $or: [
-          { userId: userId },        
-          { userId: userObjectId }   
-        ]
+      .find({
+        $or: [{ userId: userId }, { userId: userObjectId }],
       })
       .sort({ date: -1 })
       .toArray();
 
     const contributions = await db
       .collection("contributions")
-      .find({ 
-        $or: [
-          { supporterId: userId },
-          { supporterId: userObjectId }
-        ]
+      .find({
+        $or: [{ supporterId: userId }, { supporterId: userObjectId }],
       })
       .toArray();
 
@@ -1239,95 +1345,102 @@ app.get("/api/supporter/payments", authMiddleware, async (req, res) => {
     }
 
     for (const payment of payments) {
-      console.log(`Processing payment: ${payment._id}, type: ${payment.type}, status: ${payment.status}`);
+      console.log(
+        `Processing payment: ${payment._id}, type: ${payment.type}, status: ${payment.status}`,
+      );
 
-      if (payment.type === 'contribution') {
+      if (payment.type === "contribution") {
         if (payment.contributionId && contributionMap[payment.contributionId]) {
           const contributionStatus = contributionMap[payment.contributionId];
           let paymentStatus = contributionStatus;
-          
-          if (contributionStatus === 'approved') {
-            paymentStatus = 'completed';
-          } else if (contributionStatus === 'pending') {
-            paymentStatus = 'pending';
-          } else if (contributionStatus === 'rejected') {
-            paymentStatus = 'rejected';
+
+          if (contributionStatus === "approved") {
+            paymentStatus = "completed";
+          } else if (contributionStatus === "pending") {
+            paymentStatus = "pending";
+          } else if (contributionStatus === "rejected") {
+            paymentStatus = "rejected";
           }
 
           if (payment.status !== paymentStatus) {
-            console.log(`Updating payment ${payment._id}: ${payment.status} -> ${paymentStatus}`);
-            await db.collection("payments").updateOne(
-              { _id: payment._id },
-              { $set: { status: paymentStatus } }
+            console.log(
+              `Updating payment ${payment._id}: ${payment.status} -> ${paymentStatus}`,
             );
+            await db
+              .collection("payments")
+              .updateOne(
+                { _id: payment._id },
+                { $set: { status: paymentStatus } },
+              );
             payment.status = paymentStatus;
           }
-        }
-        else if (payment.campaignId && contributionMap[payment.campaignId]) {
+        } else if (payment.campaignId && contributionMap[payment.campaignId]) {
           const contributionStatus = contributionMap[payment.campaignId];
           let paymentStatus = contributionStatus;
-          
-          if (contributionStatus === 'approved') {
-            paymentStatus = 'completed';
-          } else if (contributionStatus === 'pending') {
-            paymentStatus = 'pending';
-          } else if (contributionStatus === 'rejected') {
-            paymentStatus = 'rejected';
+
+          if (contributionStatus === "approved") {
+            paymentStatus = "completed";
+          } else if (contributionStatus === "pending") {
+            paymentStatus = "pending";
+          } else if (contributionStatus === "rejected") {
+            paymentStatus = "rejected";
           }
 
           if (payment.status !== paymentStatus) {
-            console.log(`Updating payment ${payment._id} (by campaign): ${payment.status} -> ${paymentStatus}`);
-            await db.collection("payments").updateOne(
-              { _id: payment._id },
-              { $set: { status: paymentStatus } }
+            console.log(
+              `Updating payment ${payment._id} (by campaign): ${payment.status} -> ${paymentStatus}`,
             );
+            await db
+              .collection("payments")
+              .updateOne(
+                { _id: payment._id },
+                { $set: { status: paymentStatus } },
+              );
             payment.status = paymentStatus;
           }
         }
       }
-      if (payment.type === 'purchase') {
-        if (payment.status !== 'completed') {
-          console.log(`Fixing purchase payment ${payment._id}: ${payment.status} -> completed`);
-          await db.collection("payments").updateOne(
-            { _id: payment._id },
-            { $set: { status: 'completed' } }
+      if (payment.type === "purchase") {
+        if (payment.status !== "completed") {
+          console.log(
+            `Fixing purchase payment ${payment._id}: ${payment.status} -> completed`,
           );
-          payment.status = 'completed';
+          await db
+            .collection("payments")
+            .updateOne({ _id: payment._id }, { $set: { status: "completed" } });
+          payment.status = "completed";
         }
       }
     }
     if (payments.length === 0 && contributions.length > 0) {
-      console.log('No payments found, creating from contributions...');
-      
+      console.log("No payments found, creating from contributions...");
+
       for (const c of contributions) {
-        const paymentStatus = c.status === 'approved' ? 'completed' : c.status;
-        
+        const paymentStatus = c.status === "approved" ? "completed" : c.status;
+
         await db.collection("payments").insertOne({
           userId: userId,
-          type: 'contribution',
+          type: "contribution",
           credits: -c.amount,
           amount: c.amount,
           campaignId: c.campaignId,
           campaignTitle: c.campaignTitle,
           date: c.date || new Date(),
           status: paymentStatus,
-          contributionId: c._id.toString()
+          contributionId: c._id.toString(),
         });
         console.log(`Created payment for contribution: ${c._id}`);
       }
-      
+
       // Fetch payments again
       const newPayments = await db
         .collection("payments")
-        .find({ 
-          $or: [
-            { userId: userId },
-            { userId: userObjectId }
-          ]
+        .find({
+          $or: [{ userId: userId }, { userId: userObjectId }],
         })
         .sort({ date: -1 })
         .toArray();
-      
+
       return res.json({
         success: true,
         payments: newPayments,
@@ -1343,6 +1456,317 @@ app.get("/api/supporter/payments", authMiddleware, async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 });
+// ===================== ADMIN APPROVE CAMPAIGN =====================
+app.post("/api/admin/campaign/approve", authMiddleware, async (req, res) => {
+  try {
+    const { campaignId } = req.body;
+    const db = getDB();
+
+    // Check if user is admin
+    const admin = await db.collection("user").findOne({ _id: req.user.id });
+    if (admin.role !== "admin") {
+      return res
+        .status(403)
+        .json({ success: false, message: "Unauthorized. Admin only." });
+    }
+
+    const campaign = await db
+      .collection("campaigns")
+      .findOne({ _id: new ObjectId(campaignId) });
+    if (!campaign) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Campaign not found" });
+    }
+
+    await db
+      .collection("campaigns")
+      .updateOne(
+        { _id: new ObjectId(campaignId) },
+        { $set: { status: "approved" } },
+      );
+
+    // ★★★ CREATE NOTIFICATION FOR CREATOR ★★★
+    await createNotification({
+      message: `✅ Your campaign "${campaign.title}" has been approved by admin!`,
+      toEmail: campaign.creatorEmail,
+      actionRoute: `/dashboard/creator/my-campaigns`,
+      type: "success",
+      metadata: {
+        campaignId: campaignId,
+        campaignTitle: campaign.title,
+      },
+    });
+
+    res.json({ success: true, message: "Campaign approved successfully" });
+  } catch (error) {
+    console.error("Approve campaign error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ===================== ADMIN REJECT CAMPAIGN =====================
+app.post("/api/admin/campaign/reject", authMiddleware, async (req, res) => {
+  try {
+    const { campaignId } = req.body;
+    const db = getDB();
+
+    const admin = await db.collection("user").findOne({ _id: req.user.id });
+    if (admin.role !== "admin") {
+      return res
+        .status(403)
+        .json({ success: false, message: "Unauthorized. Admin only." });
+    }
+
+    const campaign = await db
+      .collection("campaigns")
+      .findOne({ _id: new ObjectId(campaignId) });
+    if (!campaign) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Campaign not found" });
+    }
+
+    await db
+      .collection("campaigns")
+      .updateOne(
+        { _id: new ObjectId(campaignId) },
+        { $set: { status: "rejected" } },
+      );
+
+    // ★★★ CREATE NOTIFICATION FOR CREATOR ★★★
+    await createNotification({
+      message: `❌ Your campaign "${campaign.title}" has been rejected by admin. Please review and resubmit.`,
+      toEmail: campaign.creatorEmail,
+      actionRoute: `/dashboard/creator/my-campaigns`,
+      type: "error",
+      metadata: {
+        campaignId: campaignId,
+        campaignTitle: campaign.title,
+      },
+    });
+
+    res.json({ success: true, message: "Campaign rejected successfully" });
+  } catch (error) {
+    console.error("Reject campaign error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ===================== ADMIN APPROVE WITHDRAWAL =====================
+app.post("/api/admin/withdrawal/approve", authMiddleware, async (req, res) => {
+  try {
+    const { withdrawalId } = req.body;
+    const db = getDB();
+
+    const admin = await db.collection("user").findOne({ _id: req.user.id });
+    if (admin.role !== "admin") {
+      return res
+        .status(403)
+        .json({ success: false, message: "Unauthorized. Admin only." });
+    }
+
+    const withdrawal = await db.collection("withdrawals").findOne({
+      _id: new ObjectId(withdrawalId),
+    });
+
+    if (!withdrawal) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Withdrawal not found" });
+    }
+
+    if (withdrawal.status === "approved") {
+      return res
+        .status(400)
+        .json({ success: false, message: "Withdrawal already approved" });
+    }
+
+    // Deduct credits from campaigns
+    const campaigns = await db
+      .collection("campaigns")
+      .find({ creatorId: withdrawal.creatorId })
+      .toArray();
+
+    let remainingToWithdraw = withdrawal.withdrawalCredits;
+
+    for (const campaign of campaigns) {
+      if (remainingToWithdraw <= 0) break;
+
+      const contributions = await db
+        .collection("contributions")
+        .find({
+          campaignId: campaign._id.toString(),
+          status: "approved",
+        })
+        .toArray();
+
+      const campaignRaised = contributions.reduce(
+        (sum, c) => sum + (c.amount || 0),
+        0,
+      );
+
+      if (campaignRaised <= 0) continue;
+
+      let deductAmount = Math.min(remainingToWithdraw, campaignRaised);
+
+      await db
+        .collection("campaigns")
+        .updateOne({ _id: campaign._id }, { $inc: { raised: -deductAmount } });
+
+      remainingToWithdraw -= deductAmount;
+    }
+
+    await db
+      .collection("withdrawals")
+      .updateOne(
+        { _id: new ObjectId(withdrawalId) },
+        { $set: { status: "approved" } },
+      );
+
+    // ★★★ CREATE NOTIFICATION FOR CREATOR ★★★
+    await createNotification({
+      message: `✅ Your withdrawal request of $${withdrawal.withdrawalAmount} has been approved!`,
+      toEmail: withdrawal.creatorEmail,
+      actionRoute: `/dashboard/creator/withdrawals`,
+      type: "success",
+      metadata: {
+        withdrawalId: withdrawalId,
+        amount: withdrawal.withdrawalAmount,
+        credits: withdrawal.withdrawalCredits,
+      },
+    });
+
+    res.json({
+      success: true,
+      message: "Withdrawal approved and credits deducted",
+    });
+  } catch (error) {
+    console.error("Approve withdrawal error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ===================== ADMIN REJECT WITHDRAWAL =====================
+app.post("/api/admin/withdrawal/reject", authMiddleware, async (req, res) => {
+  try {
+    const { withdrawalId } = req.body;
+    const db = getDB();
+
+    const admin = await db.collection("user").findOne({ _id: req.user.id });
+    if (admin.role !== "admin") {
+      return res
+        .status(403)
+        .json({ success: false, message: "Unauthorized. Admin only." });
+    }
+
+    const withdrawal = await db.collection("withdrawals").findOne({
+      _id: new ObjectId(withdrawalId),
+    });
+
+    if (!withdrawal) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Withdrawal not found" });
+    }
+
+    await db
+      .collection("withdrawals")
+      .updateOne(
+        { _id: new ObjectId(withdrawalId) },
+        { $set: { status: "rejected" } },
+      );
+
+    // ★★★ CREATE NOTIFICATION FOR CREATOR ★★★
+    await createNotification({
+      message: `❌ Your withdrawal request of $${withdrawal.withdrawalAmount} has been rejected. Please contact support.`,
+      toEmail: withdrawal.creatorEmail,
+      actionRoute: `/dashboard/creator/withdrawals`,
+      type: "error",
+      metadata: {
+        withdrawalId: withdrawalId,
+        amount: withdrawal.withdrawalAmount,
+        credits: withdrawal.withdrawalCredits,
+      },
+    });
+
+    res.json({ success: true, message: "Withdrawal rejected" });
+  } catch (error) {
+    console.error("Reject withdrawal error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ===================== GET NOTIFICATIONS =====================
+app.get("/api/notifications", authMiddleware, async (req, res) => {
+  try {
+    const userEmail = req.user.email;
+    const db = getDB();
+
+    const notifications = await db
+      .collection("notifications")
+      .find({ toEmail: userEmail })
+      .sort({ time: -1 })
+      .toArray();
+
+    // Mark notifications as read
+    await db
+      .collection("notifications")
+      .updateMany(
+        { toEmail: userEmail, read: false },
+        { $set: { read: true } },
+      );
+
+    res.json({
+      success: true,
+      notifications: notifications,
+    });
+  } catch (error) {
+    console.error("Get notifications error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ===================== GET UNREAD NOTIFICATION COUNT =====================
+app.get("/api/notifications/unread-count", authMiddleware, async (req, res) => {
+  try {
+    const userEmail = req.user.email;
+    const db = getDB();
+
+    const count = await db
+      .collection("notifications")
+      .countDocuments({ toEmail: userEmail, read: false });
+
+    res.json({
+      success: true,
+      count: count,
+    });
+  } catch (error) {
+    console.error("Get unread count error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ===================== MARK NOTIFICATION AS READ =====================
+app.put("/api/notifications/:id/read", authMiddleware, async (req, res) => {
+  try {
+    const notificationId = req.params.id;
+    const db = getDB();
+
+    await db
+      .collection("notifications")
+      .updateOne(
+        { _id: new ObjectId(notificationId) },
+        { $set: { read: true } },
+      );
+
+    res.json({ success: true, message: "Notification marked as read" });
+  } catch (error) {
+    console.error("Mark notification read error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // Test route
 app.get("/", (req, res) => {
   res.send("Crowdfunding server running");
