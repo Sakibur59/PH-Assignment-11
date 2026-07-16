@@ -1456,6 +1456,142 @@ app.get("/api/supporter/payments", authMiddleware, async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 });
+// ===================== ADMIN DASHBOARD =====================
+app.get("/api/admin/dashboard", authMiddleware, async (req, res) => {
+  try {
+    const db = getDB();
+    const userId = req.user.id;
+    const userEmail = req.user.email;
+
+    console.log('=== ADMIN DASHBOARD ===');
+    console.log('User ID:', userId);
+    console.log('User Email:', userEmail);
+
+    // Check if user is admin - try both ID and email
+    let admin = await db.collection("user").findOne({ _id: userId });
+    
+    if (!admin) {
+      console.log('Admin not found by ID, trying by email...');
+      admin = await db.collection("user").findOne({ email: userEmail });
+    }
+
+    if (!admin) {
+      console.log('Admin not found!');
+      return res.status(403).json({ 
+        success: false, 
+        message: "User not found" 
+      });
+    }
+
+    console.log('Admin found:', admin.email);
+    console.log('Admin role:', admin.role);
+
+    if (admin.role !== "admin") {
+      console.log('User is not admin, role:', admin.role);
+      return res.status(403).json({ 
+        success: false, 
+        message: "Unauthorized. Admin only." 
+      });
+    }
+
+    // Get all users
+    const allUsers = await db.collection("user").find({}).toArray();
+    console.log('Total users:', allUsers.length);
+    
+    // Count supporters and creators
+    const supporters = allUsers.filter(u => u.role === 'supporter');
+    const creators = allUsers.filter(u => u.role === 'creator');
+    
+    // Calculate total credits
+    const totalCredits = allUsers.reduce((sum, u) => sum + (u.credits || 0), 0);
+
+    // Get all payments
+    const payments = await db.collection("payments").find({}).toArray();
+    const totalPayments = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
+
+    // Get pending campaigns
+    const pendingCampaigns = await db.collection("campaigns")
+      .find({ status: "pending" })
+      .count();
+
+    // Get pending withdrawals
+    const pendingWithdrawals = await db.collection("withdrawals")
+      .find({ status: "pending" })
+      .count();
+
+    // Get recent activity (last 10)
+    const recentContributions = await db.collection("contributions")
+      .find({})
+      .sort({ date: -1 })
+      .limit(5)
+      .toArray();
+
+    const recentWithdrawals = await db.collection("withdrawals")
+      .find({})
+      .sort({ date: -1 })
+      .limit(5)
+      .toArray();
+
+    const recentCampaigns = await db.collection("campaigns")
+      .find({})
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .toArray();
+
+    // Combine recent activity
+    const recentActivity = [];
+
+    for (const c of recentContributions) {
+      recentActivity.push({
+        type: 'contribution',
+        message: `${c.supporterName || 'Someone'} contributed $${c.amount} to "${c.campaignTitle || 'a campaign'}"`,
+        time: c.date || new Date(),
+        status: c.status || 'pending'
+      });
+    }
+
+    for (const w of recentWithdrawals) {
+      recentActivity.push({
+        type: 'withdrawal',
+        message: `${w.creatorName || 'Someone'} requested withdrawal of $${w.withdrawalAmount || 0}`,
+        time: w.date || new Date(),
+        status: w.status || 'pending'
+      });
+    }
+
+    for (const c of recentCampaigns) {
+      recentActivity.push({
+        type: 'campaign',
+        message: `${c.creatorName || 'Someone'} created campaign "${c.title || 'Untitled'}"`,
+        time: c.createdAt || new Date(),
+        status: c.status || 'pending'
+      });
+    }
+
+    // Sort by time descending
+    recentActivity.sort((a, b) => new Date(b.time) - new Date(a.time));
+    // Limit to 10
+    const limitedActivity = recentActivity.slice(0, 10);
+
+    console.log('Admin dashboard data fetched successfully');
+
+    res.json({
+      success: true,
+      stats: {
+        totalSupporters: supporters.length,
+        totalCreators: creators.length,
+        totalCredits: totalCredits,
+        totalPayments: totalPayments.toFixed(2),
+        pendingCampaigns: pendingCampaigns,
+        pendingWithdrawals: pendingWithdrawals
+      },
+      recentActivity: limitedActivity
+    });
+  } catch (error) {
+    console.error("Admin dashboard error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
 // ===================== ADMIN APPROVE CAMPAIGN =====================
 app.post("/api/admin/campaign/approve", authMiddleware, async (req, res) => {
   try {
