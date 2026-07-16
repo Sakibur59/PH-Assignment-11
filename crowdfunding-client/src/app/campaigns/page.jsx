@@ -1,21 +1,24 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Search, Filter } from 'lucide-react';
 
 export default function CampaignsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  
+  // Get category from URL
+  const categoryFromUrl = searchParams.get('category') || '';
+  
   const [campaigns, setCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [selectedCategory, setSelectedCategory] = useState(categoryFromUrl || 'all');
   const [error, setError] = useState('');
-  
-  // Debounced search term
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
-  const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL;
+  const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
 
   const categories = [
     'all', 
@@ -24,8 +27,14 @@ export default function CampaignsPage() {
     'Environment', 
     'Health', 
     'Arts', 
-    'Community'
+    'Community',
+    'Film',
+    'Music',
+    'Product',
+    'Cause'
   ];
+
+  // Debounce effect - 500ms delay
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchTerm);
@@ -33,6 +42,24 @@ export default function CampaignsPage() {
 
     return () => clearTimeout(timer);
   }, [searchTerm]);
+
+  // Update URL when category changes
+  useEffect(() => {
+    if (selectedCategory && selectedCategory !== 'all') {
+      router.push(`/campaigns?category=${encodeURIComponent(selectedCategory)}`, { scroll: false });
+    } else if (selectedCategory === 'all') {
+      router.push('/campaigns', { scroll: false });
+    }
+  }, [selectedCategory, router]);
+
+  // Set category from URL on mount
+  useEffect(() => {
+    if (categoryFromUrl) {
+      setSelectedCategory(categoryFromUrl);
+    }
+  }, [categoryFromUrl]);
+
+  // Fetch campaigns when debouncedSearch or selectedCategory changes
   useEffect(() => {
     fetchCampaigns();
   }, [debouncedSearch, selectedCategory]);
@@ -51,7 +78,7 @@ export default function CampaignsPage() {
       let url = `${SERVER_URL}/api/campaigns/approved`;
       const params = new URLSearchParams();
       if (debouncedSearch) params.append('search', debouncedSearch);
-      if (selectedCategory !== 'all') params.append('category', selectedCategory);
+      if (selectedCategory && selectedCategory !== 'all') params.append('category', selectedCategory);
       
       if (params.toString()) {
         url += `?${params.toString()}`;
@@ -106,8 +133,19 @@ export default function CampaignsPage() {
       'Health': 'bg-red-500/10 text-red-600 border-red-200',
       'Arts': 'bg-purple-500/10 text-purple-600 border-purple-200',
       'Community': 'bg-orange-500/10 text-orange-600 border-orange-200',
+      'Film': 'bg-pink-500/10 text-pink-600 border-pink-200',
+      'Music': 'bg-indigo-500/10 text-indigo-600 border-indigo-200',
+      'Product': 'bg-cyan-500/10 text-cyan-600 border-cyan-200',
+      'Cause': 'bg-rose-500/10 text-rose-600 border-rose-200',
     };
     return colors[category] || 'bg-gray-500/10 text-gray-600 border-gray-200';
+  };
+
+  // Clear filter
+  const clearFilters = () => {
+    setSearchTerm('');
+    setSelectedCategory('all');
+    router.push('/campaigns', { scroll: false });
   };
 
   if (loading && campaigns.length === 0) {
@@ -149,7 +187,6 @@ export default function CampaignsPage() {
                 className="w-full bg-[#1B1F2A] border border-white/10 rounded-lg pl-10 pr-4 py-2 text-[#F3EFE4] focus:border-[#D8A13B] focus:outline-none transition-colors"
                 style={{ fontFamily: "'Space Grotesk', sans-serif" }}
               />
-              {/* Loading indicator for search */}
               {loading && searchTerm !== debouncedSearch && (
                 <div className="absolute right-3 top-1/2 -translate-y-1/2">
                   <div className="w-4 h-4 border-2 border-[#D8A13B] border-t-transparent rounded-full animate-spin"></div>
@@ -171,6 +208,15 @@ export default function CampaignsPage() {
                 ))}
               </select>
             </div>
+            {(selectedCategory !== 'all' || searchTerm) && (
+              <button
+                onClick={clearFilters}
+                className="px-4 py-2 text-[#D8A13B] hover:text-[#c99530] transition-colors text-sm whitespace-nowrap"
+                style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+              >
+                Clear Filters ✕
+              </button>
+            )}
           </div>
         </div>
 
@@ -178,6 +224,7 @@ export default function CampaignsPage() {
         {!loading && (
           <div className="text-[#9AA1AE] text-sm mb-4" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
             Found {campaigns.length} campaign{campaigns.length !== 1 ? 's' : ''}
+            {selectedCategory !== 'all' && ` in ${selectedCategory}`}
           </div>
         )}
 
@@ -195,6 +242,13 @@ export default function CampaignsPage() {
             <p className="text-[#9AA1AE]" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
               No campaigns found matching your criteria.
             </p>
+            <button
+              onClick={clearFilters}
+              className="mt-4 text-[#D8A13B] hover:text-[#c99530] transition-colors"
+              style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+            >
+              Clear all filters
+            </button>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
