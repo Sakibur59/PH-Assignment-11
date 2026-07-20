@@ -1738,6 +1738,89 @@ app.post("/api/admin/campaign/reject", authMiddleware, async (req, res) => {
   }
 });
 
+// server/index.js - Add delete campaign route
+
+// ===================== ADMIN DELETE CAMPAIGN =====================
+app.delete("/api/admin/campaign/:id", authMiddleware, async (req, res) => {
+  try {
+    const campaignId = req.params.id;
+    const db = getDB();
+
+    // Check if user is admin
+    const admin = await db.collection("user").findOne({ 
+      email: req.user.email 
+    });
+
+    if (!admin || admin.role !== "admin") {
+      return res.status(403).json({ 
+        success: false, 
+        message: "Unauthorized. Admin only." 
+      });
+    }
+
+    const campaign = await db
+      .collection("campaigns")
+      .findOne({ _id: new ObjectId(campaignId) });
+
+    if (!campaign) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "Campaign not found" 
+      });
+    }
+
+    // Get all approved contributions for this campaign
+    const contributions = await db
+      .collection("contributions")
+      .find({
+        campaignId: campaignId,
+        status: "approved",
+      })
+      .toArray();
+
+    // Refund all supporters
+    for (const contribution of contributions) {
+      await db
+        .collection("user")
+        .updateOne(
+          { _id: contribution.supporterId },
+          { $inc: { credits: contribution.amount } }
+        );
+    }
+
+    // Delete campaign
+    await db
+      .collection("campaigns")
+      .deleteOne({ _id: new ObjectId(campaignId) });
+
+    // Delete all contributions for this campaign
+    await db.collection("contributions").deleteMany({ campaignId: campaignId });
+
+    // Delete related payments
+    await db.collection("payments").deleteMany({ campaignId: campaignId });
+
+    // Notification for creator
+    await createNotification({
+      message: `🗑️ Your campaign "${campaign.title}" has been permanently deleted by admin.`,
+      toEmail: campaign.creatorEmail,
+      actionRoute: `/dashboard/creator/my-campaigns`,
+      type: "error",
+      metadata: {
+        campaignId: campaignId,
+        campaignTitle: campaign.title,
+      },
+    });
+
+    res.json({ 
+      success: true, 
+      message: "Campaign deleted permanently. All supporters refunded." 
+    });
+  } catch (error) {
+    console.error("Delete campaign error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // ===================== ADMIN - GET WITHDRAWALS =====================
 app.get("/api/admin/withdrawals", authMiddleware, async (req, res) => {
   try {

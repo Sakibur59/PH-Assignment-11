@@ -1,4 +1,3 @@
-// client/src/app/dashboard/admin/campaigns/page.jsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -11,7 +10,8 @@ import {
   Eye,
   Search,
   AlertTriangle,
-  X
+  X,
+  Trash2
 } from "lucide-react";
 import Toast from "@/components/Toast";
 
@@ -29,11 +29,12 @@ export default function AdminCampaigns() {
   const [confirmModal, setConfirmModal] = useState({
     open: false,
     campaignId: null,
-    action: null, // 'approve' or 'reject'
+    action: null, // 'approve', 'reject', 'delete'
     title: "",
     message: "",
     buttonText: "",
-    buttonColor: ""
+    buttonColor: "",
+    icon: null
   });
   
   // Toast state
@@ -98,13 +99,25 @@ export default function AdminCampaigns() {
         title: "Approve Campaign",
         message: `Are you sure you want to approve "${campaignTitle}"? This campaign will become visible to all supporters.`,
         buttonText: "Yes, Approve",
-        buttonColor: "bg-[#4FAE7C] hover:bg-[#3d8d64]"
+        buttonColor: "bg-[#4FAE7C] hover:bg-[#3d8d64]",
+        icon: <CheckCircle size={32} className="text-[#4FAE7C]" />,
+        iconBg: "bg-[#4FAE7C]/10"
       },
       reject: {
         title: "Reject Campaign",
         message: `Are you sure you want to reject "${campaignTitle}"? The creator will be notified and the campaign will not be visible to supporters.`,
         buttonText: "Yes, Reject",
-        buttonColor: "bg-[#E88A7E] hover:bg-[#d47a6e]"
+        buttonColor: "bg-[#E88A7E] hover:bg-[#d47a6e]",
+        icon: <XCircle size={32} className="text-[#E88A7E]" />,
+        iconBg: "bg-[#E88A7E]/10"
+      },
+      delete: {
+        title: "Delete Campaign",
+        message: `⚠️ Are you sure you want to permanently delete "${campaignTitle}"? This action cannot be undone. All associated contributions and data will be removed.`,
+        buttonText: "Yes, Delete Permanently",
+        buttonColor: "bg-[#E88A7E] hover:bg-[#d47a6e]",
+        icon: <Trash2 size={32} className="text-[#E88A7E]" />,
+        iconBg: "bg-[#E88A7E]/10"
       }
     };
 
@@ -116,7 +129,9 @@ export default function AdminCampaigns() {
       title: config.title,
       message: config.message,
       buttonText: config.buttonText,
-      buttonColor: config.buttonColor
+      buttonColor: config.buttonColor,
+      icon: config.icon,
+      iconBg: config.iconBg
     });
   };
 
@@ -128,7 +143,9 @@ export default function AdminCampaigns() {
       title: "",
       message: "",
       buttonText: "",
-      buttonColor: ""
+      buttonColor: "",
+      icon: null,
+      iconBg: ""
     });
   };
 
@@ -139,26 +156,40 @@ export default function AdminCampaigns() {
 
     try {
       const token = localStorage.getItem('access_token');
-      const endpoint = action === 'approve' 
-        ? `${SERVER_URL}/api/admin/campaign/approve`
-        : `${SERVER_URL}/api/admin/campaign/reject`;
+      let endpoint = '';
+      let method = 'POST';
+      let successMessage = '';
+
+      if (action === 'approve') {
+        endpoint = `${SERVER_URL}/api/admin/campaign/approve`;
+        successMessage = '✅ Campaign approved successfully!';
+      } else if (action === 'reject') {
+        endpoint = `${SERVER_URL}/api/admin/campaign/reject`;
+        successMessage = '❌ Campaign rejected. Creator notified.';
+      } else if (action === 'delete') {
+        endpoint = `${SERVER_URL}/api/admin/campaign/${campaignId}`;
+        method = 'DELETE';
+        successMessage = '🗑️ Campaign deleted successfully!';
+      }
 
       const response = await fetch(endpoint, {
-        method: 'POST',
+        method: method,
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ campaignId })
+        body: action !== 'delete' ? JSON.stringify({ campaignId }) : undefined
       });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || `Failed to ${action} campaign`);
+      }
 
       const data = await response.json();
       
       if (data.success) {
-        const message = action === 'approve' 
-          ? '✅ Campaign approved successfully!' 
-          : '❌ Campaign rejected. Creator notified.';
-        showToast(message, 'success');
+        showToast(successMessage, 'success');
         fetchCampaigns();
         setModalOpen(false);
       } else {
@@ -166,7 +197,7 @@ export default function AdminCampaigns() {
       }
     } catch (error) {
       console.error(`Error ${action}ing campaign:`, error);
-      showToast(`Failed to ${action} campaign`, 'error');
+      showToast(error.message || `Failed to ${action} campaign`, 'error');
     } finally {
       setActionLoading(false);
     }
@@ -314,7 +345,7 @@ export default function AdminCampaigns() {
                       {getStatusBadge(campaign.status)}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5">
                         <button
                           onClick={() => {
                             setSelectedCampaign(campaign);
@@ -345,6 +376,15 @@ export default function AdminCampaigns() {
                             </button>
                           </>
                         )}
+                        {/* ★★★ Delete Button ★★★ */}
+                        <button
+                          onClick={() => openConfirmModal(campaign._id, 'delete', campaign.title)}
+                          disabled={actionLoading}
+                          className="p-1.5 bg-[#E88A7E]/10 text-[#E88A7E] rounded hover:bg-[#E88A7E]/30 transition-colors disabled:opacity-50"
+                          title="Delete Campaign"
+                        >
+                          <Trash2 size={16} />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -465,6 +505,19 @@ export default function AdminCampaigns() {
                   </button>
                 </>
               )}
+              {/* ★★★ Delete button in modal ★★★ */}
+              <button
+                onClick={() => {
+                  setModalOpen(false);
+                  openConfirmModal(selectedCampaign._id, 'delete', selectedCampaign.title);
+                }}
+                disabled={actionLoading}
+                className="px-4 py-2 bg-[#E88A7E]/10 text-[#E88A7E] rounded-lg hover:bg-[#E88A7E]/30 transition-colors disabled:opacity-50 flex items-center gap-2"
+                style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+              >
+                <Trash2 size={16} />
+                Delete
+              </button>
               <button
                 onClick={() => setModalOpen(false)}
                 className="px-4 py-2 bg-[#1B1F2A] text-[#9AA1AE] rounded-lg hover:text-[#F3EFE4] transition-colors"
@@ -482,16 +535,8 @@ export default function AdminCampaigns() {
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[60] p-4">
           <div className="bg-[#14171F] border border-white/10 rounded-lg max-w-md w-full p-6">
             <div className="flex items-center justify-center mb-4">
-              <div className={`p-3 rounded-full ${
-                confirmModal.action === 'approve' 
-                  ? 'bg-[#4FAE7C]/10' 
-                  : 'bg-[#E88A7E]/10'
-              }`}>
-                {confirmModal.action === 'approve' ? (
-                  <CheckCircle size={32} className="text-[#4FAE7C]" />
-                ) : (
-                  <XCircle size={32} className="text-[#E88A7E]" />
-                )}
+              <div className={`p-3 rounded-full ${confirmModal.iconBg}`}>
+                {confirmModal.icon}
               </div>
             </div>
             
