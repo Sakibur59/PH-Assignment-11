@@ -1592,37 +1592,80 @@ app.get("/api/admin/dashboard", authMiddleware, async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 });
+// ===================== ADMIN - GET CAMPAIGNS =====================
+app.get("/api/admin/campaigns", authMiddleware, async (req, res) => {
+  try {
+    const db = getDB();
+    const userId = req.user.id;
+
+    console.log('=== ADMIN CAMPAIGNS ===');
+    console.log('User ID:', userId);
+
+    // Check if user is admin - সরাসরি email দিয়ে খুঁজুন
+    const admin = await db.collection("user").findOne({ 
+      email: req.user.email 
+    });
+
+    if (!admin || admin.role !== "admin") {
+      console.log('❌ Unauthorized - Not admin');
+      return res.status(403).json({ 
+        success: false, 
+        message: "Unauthorized. Admin only." 
+      });
+    }
+
+    console.log('✅ Admin found:', admin.email);
+
+    const campaigns = await db.collection("campaigns")
+      .find({})
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    console.log(`Found ${campaigns.length} campaigns`);
+
+    res.json({ success: true, campaigns });
+  } catch (error) {
+    console.error("Get admin campaigns error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
 // ===================== ADMIN APPROVE CAMPAIGN =====================
 app.post("/api/admin/campaign/approve", authMiddleware, async (req, res) => {
   try {
     const { campaignId } = req.body;
     const db = getDB();
 
-    // Check if user is admin
-    const admin = await db.collection("user").findOne({ _id: req.user.id });
-    if (admin.role !== "admin") {
-      return res
-        .status(403)
-        .json({ success: false, message: "Unauthorized. Admin only." });
+    // Check if user is admin - email দিয়ে check
+    const admin = await db.collection("user").findOne({ 
+      email: req.user.email 
+    });
+
+    if (!admin || admin.role !== "admin") {
+      return res.status(403).json({ 
+        success: false, 
+        message: "Unauthorized. Admin only." 
+      });
     }
 
     const campaign = await db
       .collection("campaigns")
       .findOne({ _id: new ObjectId(campaignId) });
+      
     if (!campaign) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Campaign not found" });
+      return res.status(404).json({ 
+        success: false, 
+        message: "Campaign not found" 
+      });
     }
 
     await db
       .collection("campaigns")
       .updateOne(
         { _id: new ObjectId(campaignId) },
-        { $set: { status: "approved" } },
+        { $set: { status: "approved" } }
       );
 
-    // ★★★ CREATE NOTIFICATION FOR CREATOR ★★★
+    // Notification for creator
     await createNotification({
       message: `✅ Your campaign "${campaign.title}" has been approved by admin!`,
       toEmail: campaign.creatorEmail,
@@ -1647,30 +1690,36 @@ app.post("/api/admin/campaign/reject", authMiddleware, async (req, res) => {
     const { campaignId } = req.body;
     const db = getDB();
 
-    const admin = await db.collection("user").findOne({ _id: req.user.id });
-    if (admin.role !== "admin") {
-      return res
-        .status(403)
-        .json({ success: false, message: "Unauthorized. Admin only." });
+    const admin = await db.collection("user").findOne({ 
+      email: req.user.email 
+    });
+
+    if (!admin || admin.role !== "admin") {
+      return res.status(403).json({ 
+        success: false, 
+        message: "Unauthorized. Admin only." 
+      });
     }
 
     const campaign = await db
       .collection("campaigns")
       .findOne({ _id: new ObjectId(campaignId) });
+      
     if (!campaign) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Campaign not found" });
+      return res.status(404).json({ 
+        success: false, 
+        message: "Campaign not found" 
+      });
     }
 
     await db
       .collection("campaigns")
       .updateOne(
         { _id: new ObjectId(campaignId) },
-        { $set: { status: "rejected" } },
+        { $set: { status: "rejected" } }
       );
 
-    // ★★★ CREATE NOTIFICATION FOR CREATOR ★★★
+    // Notification for creator
     await createNotification({
       message: `❌ Your campaign "${campaign.title}" has been rejected by admin. Please review and resubmit.`,
       toEmail: campaign.creatorEmail,
@@ -1689,17 +1738,49 @@ app.post("/api/admin/campaign/reject", authMiddleware, async (req, res) => {
   }
 });
 
+// ===================== ADMIN - GET WITHDRAWALS =====================
+app.get("/api/admin/withdrawals", authMiddleware, async (req, res) => {
+  try {
+    const db = getDB();
+
+    const admin = await db.collection("user").findOne({ 
+      email: req.user.email 
+    });
+
+    if (!admin || admin.role !== "admin") {
+      return res.status(403).json({ 
+        success: false, 
+        message: "Unauthorized. Admin only." 
+      });
+    }
+
+    const withdrawals = await db.collection("withdrawals")
+      .find({})
+      .sort({ date: -1 })
+      .toArray();
+
+    res.json({ success: true, withdrawals });
+  } catch (error) {
+    console.error("Get admin withdrawals error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // ===================== ADMIN APPROVE WITHDRAWAL =====================
 app.post("/api/admin/withdrawal/approve", authMiddleware, async (req, res) => {
   try {
     const { withdrawalId } = req.body;
     const db = getDB();
 
-    const admin = await db.collection("user").findOne({ _id: req.user.id });
-    if (admin.role !== "admin") {
-      return res
-        .status(403)
-        .json({ success: false, message: "Unauthorized. Admin only." });
+    const admin = await db.collection("user").findOne({ 
+      email: req.user.email 
+    });
+
+    if (!admin || admin.role !== "admin") {
+      return res.status(403).json({ 
+        success: false, 
+        message: "Unauthorized. Admin only." 
+      });
     }
 
     const withdrawal = await db.collection("withdrawals").findOne({
@@ -1707,15 +1788,17 @@ app.post("/api/admin/withdrawal/approve", authMiddleware, async (req, res) => {
     });
 
     if (!withdrawal) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Withdrawal not found" });
+      return res.status(404).json({ 
+        success: false, 
+        message: "Withdrawal not found" 
+      });
     }
 
     if (withdrawal.status === "approved") {
-      return res
-        .status(400)
-        .json({ success: false, message: "Withdrawal already approved" });
+      return res.status(400).json({ 
+        success: false, 
+        message: "Withdrawal already approved" 
+      });
     }
 
     // Deduct credits from campaigns
@@ -1757,10 +1840,10 @@ app.post("/api/admin/withdrawal/approve", authMiddleware, async (req, res) => {
       .collection("withdrawals")
       .updateOne(
         { _id: new ObjectId(withdrawalId) },
-        { $set: { status: "approved" } },
+        { $set: { status: "approved" } }
       );
 
-    // ★★★ CREATE NOTIFICATION FOR CREATOR ★★★
+    // Notification for creator
     await createNotification({
       message: `✅ Your withdrawal request of $${withdrawal.withdrawalAmount} has been approved!`,
       toEmail: withdrawal.creatorEmail,
@@ -1789,11 +1872,15 @@ app.post("/api/admin/withdrawal/reject", authMiddleware, async (req, res) => {
     const { withdrawalId } = req.body;
     const db = getDB();
 
-    const admin = await db.collection("user").findOne({ _id: req.user.id });
-    if (admin.role !== "admin") {
-      return res
-        .status(403)
-        .json({ success: false, message: "Unauthorized. Admin only." });
+    const admin = await db.collection("user").findOne({ 
+      email: req.user.email 
+    });
+
+    if (!admin || admin.role !== "admin") {
+      return res.status(403).json({ 
+        success: false, 
+        message: "Unauthorized. Admin only." 
+      });
     }
 
     const withdrawal = await db.collection("withdrawals").findOne({
@@ -1801,19 +1888,20 @@ app.post("/api/admin/withdrawal/reject", authMiddleware, async (req, res) => {
     });
 
     if (!withdrawal) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Withdrawal not found" });
+      return res.status(404).json({ 
+        success: false, 
+        message: "Withdrawal not found" 
+      });
     }
 
     await db
       .collection("withdrawals")
       .updateOne(
         { _id: new ObjectId(withdrawalId) },
-        { $set: { status: "rejected" } },
+        { $set: { status: "rejected" } }
       );
 
-    // ★★★ CREATE NOTIFICATION FOR CREATOR ★★★
+    // Notification for creator
     await createNotification({
       message: `❌ Your withdrawal request of $${withdrawal.withdrawalAmount} has been rejected. Please contact support.`,
       toEmail: withdrawal.creatorEmail,
