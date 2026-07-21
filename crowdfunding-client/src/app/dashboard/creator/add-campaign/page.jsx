@@ -1,4 +1,3 @@
-// client/src/app/dashboard/creator/add-campaign/page.jsx
 "use client";
 
 import { useState } from "react";
@@ -24,45 +23,61 @@ export default function AddCampaign() {
   const [messageType, setMessageType] = useState("");
 
   const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
+  const IMGBB_API_KEY = process.env.NEXT_PUBLIC_IMGBB_API_KEY || "";
 
   const categories = ["Technology", "Education", "Environment", "Health", "Arts", "Community"];
 
   const handleImageUpload = async (file) => {
-  if (!file) return;
+    if (!file) return;
 
-  setUploading(true);
-  try {
-    const formDataImg = new FormData();
-    formDataImg.append("image", file);
+    setUploading(true);
+    setMessage("");
+    setMessageType("");
 
-    const response = await fetch(process.env.IMAGE_UPLOAD_URL, {
-      method: "POST",
-      body: formDataImg
-    });
+    try {
+      const formDataImg = new FormData();
+      formDataImg.append("image", file);
 
-    const data = await response.json();
-    
-    if (data.success) {
-      // Store the permanent URL from ImgBB
-      const imageUrl = data.data.url;
-      setFormData(prev => ({ ...prev, imageUrl }));
-      setImagePreview(imageUrl);
-      setMessage("Image uploaded successfully!");
-      setMessageType("success");
-    } else {
+      const response = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
+        method: "POST",
+        body: formDataImg
+      });
+
+      // Check if response is JSON
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error("Server returned non-JSON response");
+      }
+
+      const data = await response.json();
+      
+      if (data.success) {
+        const imageUrl = data.data.url;
+        setFormData(prev => ({ ...prev, imageUrl }));
+        setImagePreview(imageUrl);
+        setMessage("Image uploaded successfully!");
+        setMessageType("success");
+        setTimeout(() => setMessage(""), 3000);
+      } else {
+        // Fallback: use placeholder
+        const fallbackUrl = `https://picsum.photos/seed/${Date.now()}/400/300`;
+        setFormData(prev => ({ ...prev, imageUrl: fallbackUrl }));
+        setImagePreview(fallbackUrl);
+        setMessage("Using fallback image. ImgBB upload failed.");
+        setMessageType("warning");
+      }
+    } catch (error) {
+      console.error("Image upload error:", error);
       // Fallback: use placeholder
-      setFormData(prev => ({ ...prev, imageUrl: 'https://picsum.photos/seed/' + Date.now() + '/400/300' }));
-      setImagePreview(URL.createObjectURL(file));
+      const fallbackUrl = `https://picsum.photos/seed/${Date.now()}/400/300`;
+      setFormData(prev => ({ ...prev, imageUrl: fallbackUrl }));
+      setImagePreview(fallbackUrl);
+      setMessage("Image upload failed. Using fallback image.");
+      setMessageType("error");
+    } finally {
+      setUploading(false);
     }
-  } catch (error) {
-    console.error("Image upload error:", error);
-    // Fallback: use placeholder
-    setFormData(prev => ({ ...prev, imageUrl: 'https://picsum.photos/seed/' + Date.now() + '/400/300' }));
-    setImagePreview(URL.createObjectURL(file));
-  } finally {
-    setUploading(false);
-  }
-};
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -133,6 +148,8 @@ export default function AddCampaign() {
         <div className={`p-4 rounded-lg mb-6 ${
           messageType === "success" 
             ? "bg-[#4FAE7C]/20 border border-[#4FAE7C] text-[#4FAE7C]" 
+            : messageType === "warning"
+            ? "bg-[#D8A13B]/20 border border-[#D8A13B] text-[#D8A13B]"
             : "bg-[#E88A7E]/20 border border-[#E88A7E] text-[#E88A7E]"
         }`}>
           <span style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{message}</span>
