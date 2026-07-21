@@ -2003,6 +2003,201 @@ app.post("/api/admin/withdrawal/reject", authMiddleware, async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 });
+// ===================== ADMIN - GET ALL USERS =====================
+app.get("/api/admin/users", authMiddleware, async (req, res) => {
+  try {
+    const db = getDB();
+
+    // Check if user is admin
+    const admin = await db.collection("user").findOne({ 
+      email: req.user.email 
+    });
+
+    if (!admin || admin.role !== "admin") {
+      return res.status(403).json({ 
+        success: false, 
+        message: "Unauthorized. Admin only." 
+      });
+    }
+
+    // Get all users
+    const users = await db.collection("user")
+      .find({})
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    res.json({ success: true, users });
+  } catch (error) {
+    console.error("Get users error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ===================== ADMIN - DELETE USER =====================
+app.delete("/api/admin/users/:id", authMiddleware, async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const db = getDB();
+
+    console.log('=== DELETE USER ===');
+    console.log('User ID from params:', userId);
+
+    // Check if user is admin
+    const admin = await db.collection("user").findOne({ 
+      email: req.user.email 
+    });
+
+    if (!admin || admin.role !== "admin") {
+      return res.status(403).json({ 
+        success: false, 
+        message: "Unauthorized. Admin only." 
+      });
+    }
+
+    // Don't allow admin to delete themselves
+    if (userId === admin._id.toString() || userId === admin._id) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "You cannot delete your own account." 
+      });
+    }
+
+    // ★★★ Convert userId to ObjectId ★★★
+    let objectId;
+    try {
+      objectId = new ObjectId(userId);
+    } catch (err) {
+      // If not a valid ObjectId, try as string
+      objectId = userId;
+    }
+
+    console.log('Searching with:', objectId);
+
+    // Check if user exists
+    const user = await db.collection("user").findOne({ _id: objectId });
+    if (!user) {
+      console.log('User not found with:', objectId);
+      return res.status(404).json({ 
+        success: false, 
+        message: "User not found" 
+      });
+    }
+
+    console.log('User found:', user.name);
+
+    // Delete user
+    await db.collection("user").deleteOne({ _id: objectId });
+
+    // Delete user's contributions
+    await db.collection("contributions").deleteMany({ supporterId: userId });
+
+    // Delete user's campaigns (if creator)
+    await db.collection("campaigns").deleteMany({ creatorId: userId });
+
+    // Delete user's payments
+    await db.collection("payments").deleteMany({ userId: userId });
+
+    // Delete user's withdrawals
+    await db.collection("withdrawals").deleteMany({ creatorId: userId });
+
+    res.json({ 
+      success: true, 
+      message: "User deleted successfully" 
+    });
+  } catch (error) {
+    console.error("Delete user error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ===================== ADMIN - UPDATE USER ROLE =====================
+app.put("/api/admin/users/:id/role", authMiddleware, async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const { role } = req.body;
+    const db = getDB();
+
+    console.log('=== UPDATE USER ROLE ===');
+    console.log('User ID from params:', userId);
+    console.log('New Role:', role);
+
+    // Check if user is admin
+    const admin = await db.collection("user").findOne({ 
+      email: req.user.email 
+    });
+
+    if (!admin || admin.role !== "admin") {
+      return res.status(403).json({ 
+        success: false, 
+        message: "Unauthorized. Admin only." 
+      });
+    }
+
+    // Don't allow admin to change their own role
+    if (userId === admin._id.toString() || userId === admin._id) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "You cannot change your own role." 
+      });
+    }
+
+    // Validate role
+    const validRoles = ["admin", "creator", "supporter"];
+    if (!validRoles.includes(role)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Invalid role. Must be admin, creator, or supporter." 
+      });
+    }
+    let objectId;
+    try {
+      objectId = new ObjectId(userId);
+    } catch (err) {
+      objectId = userId;
+    }
+
+    console.log('Searching with:', objectId);
+
+    // Check if user exists
+    const user = await db.collection("user").findOne({ _id: objectId });
+    if (!user) {
+      console.log('User not found with:', objectId);
+      return res.status(404).json({ 
+        success: false, 
+        message: "User not found" 
+      });
+    }
+
+    console.log('User found:', user.name);
+    console.log('Current role:', user.role);
+
+    // Update user role
+    await db.collection("user").updateOne(
+      { _id: objectId },
+      { $set: { role: role, updatedAt: new Date() } }
+    );
+
+    // Notification for user
+    await createNotification({
+      message: `🔄 Your role has been updated to "${role}" by admin.`,
+      toEmail: user.email,
+      actionRoute: `/dashboard`,
+      type: "info",
+      metadata: {
+        userId: userId,
+        newRole: role
+      }
+    });
+
+    res.json({ 
+      success: true, 
+      message: "User role updated successfully" 
+    });
+  } catch (error) {
+    console.error("Update user role error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
 
 // ===================== GET NOTIFICATIONS =====================
 app.get("/api/notifications", authMiddleware, async (req, res) => {
