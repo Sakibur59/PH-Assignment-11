@@ -2268,13 +2268,237 @@ app.put("/api/notifications/:id/read", authMiddleware, async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 });
+// ===================== USER SETUP =====================
+app.post("/api/user/setup", authMiddleware, async (req, res) => {
+  try {
+    const { role, credits } = req.body;
+    const userId = req.user.id;
+    const db = getDB();
+
+    console.log('=== USER SETUP ===');
+    console.log('User ID:', userId);
+    console.log('Role:', role);
+    console.log('Credits:', credits);
+
+    // Update user
+    await db.collection("user").updateOne(
+      { _id: userId },
+      { 
+        $set: { 
+          role: role || "supporter",
+          credits: credits !== undefined ? credits : 50,
+          updatedAt: new Date() 
+        } 
+      }
+    );
+
+    const updatedUser = await db.collection("user").findOne({ _id: userId });
+
+    res.json({
+      success: true,
+      message: "User setup completed",
+      user: updatedUser
+    });
+  } catch (error) {
+    console.error("User setup error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+// ===================== REPORT CAMPAIGN =====================
+app.post("/api/campaigns/report", authMiddleware, async (req, res) => {
+  try {
+    const { campaignId, reason, description } = req.body;
+    const userId = req.user.id;
+    const userEmail = req.user.email;
+    const db = getDB();
+
+    console.log('=== REPORT CAMPAIGN ===');
+    console.log('User ID:', userId);
+    console.log('User Email:', userEmail);
+    console.log('Campaign ID:', campaignId);
+    console.log('Reason:', reason);
+
+    if (!campaignId || !reason) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Campaign ID and reason are required" 
+      });
+    }
+
+    // Check if campaign exists
+    const campaign = await db.collection("campaigns").findOne({ 
+      _id: new ObjectId(campaignId) 
+    });
+
+    if (!campaign) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "Campaign not found" 
+      });
+    }
+
+    // ★★★ Find user by ID or email ★★★
+    let user = await db.collection("user").findOne({ _id: userId });
+    
+    if (!user) {
+      console.log('User not found by ID, trying by email...');
+      user = await db.collection("user").findOne({ email: userEmail });
+    }
+
+    if (!user) {
+      console.log('User not found!');
+      return res.status(404).json({ 
+        success: false, 
+        message: "User not found" 
+      });
+    }
+
+    console.log('User found:', user.name, user.email);
+
+    // Check if user already reported this campaign
+    const existingReport = await db.collection("reports").findOne({
+      campaignId: campaignId,
+      reporterId: userId
+    });
+
+    if (existingReport) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "You have already reported this campaign" 
+      });
+    }
+
+    // Create report
+    const report = {
+      campaignId: campaignId,
+      campaignTitle: campaign.title,
+      campaignCreatorId: campaign.creatorId,
+      campaignCreatorName: campaign.creatorName,
+      campaignCreatorEmail: campaign.creatorEmail,
+      reporterId: userId,
+      reporterName: user.name,
+      reporterEmail: user.email,
+      reason: reason,
+      description: description || "",
+      status: "pending",
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+
+    await db.collection("reports").insertOne(report);
+
+    console.log('Report created successfully');
+
+    // Notification for admin
+    await createNotification({
+      message: `🚨 New report on "${campaign.title}" by ${user.name}`,
+      toEmail: "admin@admin.com",
+      actionRoute: `/dashboard/admin/reports`,
+      type: "error",
+      metadata: {
+        campaignId: campaignId,
+        reporterId: userId,
+        reason: reason
+      }
+    });
+
+    res.json({ 
+      success: true, 
+      message: "Campaign reported successfully. Admin will review it." 
+    });
+  } catch (error) {
+    console.error("Report campaign error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ===================== ADMIN - GET REPORTS =====================
+app.get("/api/admin/reports", authMiddleware, async (req, res) => {
+  try {
+    const db = getDB();
+
+    // Check if user is admin
+    const admin = await db.collection("user").findOne({ 
+      email: req.user.email 
+    });
+
+    if (!admin || admin.role !== "admin") {
+      return res.status(403).json({ 
+        success: false, 
+        message: "Unauthorized. Admin only." 
+      });
+    }
+
+    const reports = await db.collection("reports")
+      .find({ status: "pending" })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    console.log(`Found ${reports.length} pending reports`);
+
+    res.json({ 
+      success: true, 
+      reports: reports || [] 
+    });
+  } catch (error) {
+    console.error("Get reports error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ===================== ADMIN - RESOLVE REPORT =====================
+app.post("/api/admin/reports/resolve", authMiddleware, async (req, res) => {
+  try {
+    const { reportId, action } = req.body; // action: 'suspend' or 'delete'
+    const db = getDB();
+
+    const admin = await db.collection("user").findOne({ email: req.user.email });
+    if (!admin || admin.role !== "admin") {
+      return res.status(403).json({ success: false, message: "Unauthorized. Admin only." });
+    }
+
+    const report = await db.collection("reports").findOne({ _id: new ObjectId(reportId) });
+    if (!report) {
+      return res.status(404).json({ success: false, message: "Report not found" });
+    }
+
+    await db.collection("reports").updateOne(
+      { _id: new ObjectId(reportId) },
+      { $set: { status: "resolved", resolvedAt: new Date(), resolvedBy: admin.email, action: action } }
+    );
+
+    // If action is 'delete', delete the campaign
+    if (action === 'delete') {
+      const campaign = await db.collection("campaigns").findOne({ _id: new ObjectId(report.campaignId) });
+      if (campaign) {
+        const contributions = await db.collection("contributions").find({ campaignId: report.campaignId, status: "approved" }).toArray();
+        for (const contribution of contributions) {
+          await db.collection("user").updateOne({ _id: contribution.supporterId }, { $inc: { credits: contribution.amount } });
+        }
+        await db.collection("campaigns").deleteOne({ _id: new ObjectId(report.campaignId) });
+        await db.collection("contributions").deleteMany({ campaignId: report.campaignId });
+        await db.collection("payments").deleteMany({ campaignId: report.campaignId });
+      }
+    }
+
+    // If action is 'suspend', suspend the campaign
+    if (action === 'suspend') {
+      await db.collection("campaigns").updateOne({ _id: new ObjectId(report.campaignId) }, { $set: { status: "suspended" } });
+    }
+
+    res.json({ success: true, message: `Report resolved. Campaign ${action === 'delete' ? 'deleted' : 'suspended'}.` });
+  } catch (error) {
+    console.error("Resolve report error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
 
 // Test route
 app.get("/", (req, res) => {
   res.send("Crowdfunding server running");
 });
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT;
 
 // Connect to DB and start server
 connectDB().then(() => {

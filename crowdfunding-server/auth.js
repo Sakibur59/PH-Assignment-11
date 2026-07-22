@@ -14,7 +14,6 @@ const auth = betterAuth({
     enabled: true,
     minPasswordLength: 6,
   },
-
   socialProviders: {
     google: {
       clientId: process.env.GOOGLE_CLIENT_ID,
@@ -43,12 +42,15 @@ const auth = betterAuth({
     user: {
       create: {
         before: async (user) => {
+          console.log("=== USER CREATE (Social/Email) ===");
+          console.log("User email:", user.email);
           const role = user.role === "creator" ? "creator" : "supporter";
           const startingCredits = role === "creator" ? 20 : 50;
+
           return {
             data: {
               ...user,
-              role,
+              role: role,
               credits: startingCredits,
             },
           };
