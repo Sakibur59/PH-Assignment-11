@@ -13,6 +13,7 @@ import {
   Award,
   User,
   Copy,
+  Flag,
 } from "lucide-react";
 import Toast from "@/components/Toast";
 
@@ -29,6 +30,12 @@ export default function CampaignDetails() {
   const [error, setError] = useState("");
   const [userCredits, setUserCredits] = useState(0);
   const [contributions, setContributions] = useState([]);
+  
+  // Report state
+  const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [reportReason, setReportReason] = useState("");
+  const [reportDescription, setReportDescription] = useState("");
+  const [reportSubmitting, setReportSubmitting] = useState(false);
   
   // Toast state
   const [toast, setToast] = useState({
@@ -142,7 +149,6 @@ export default function CampaignDetails() {
       await navigator.clipboard.writeText(window.location.href);
       showToast("🔗 Campaign link copied to clipboard!", "share");
     } catch (error) {
-      // Fallback for older browsers
       const textArea = document.createElement("textarea");
       textArea.value = window.location.href;
       document.body.appendChild(textArea);
@@ -154,6 +160,44 @@ export default function CampaignDetails() {
         showToast("Failed to copy link. Please try again.", "error");
       }
       document.body.removeChild(textArea);
+    }
+  };
+
+  // Handle report submit
+  const handleReportSubmit = async (e) => {
+    e.preventDefault();
+    setReportSubmitting(true);
+
+    try {
+      const token = localStorage.getItem("access_token");
+      const response = await fetch(`${SERVER_URL}/api/campaigns/report`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          campaignId,
+          reason: reportReason,
+          description: reportDescription,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        showToast("✅ Campaign reported successfully! Admin will review it.", "success");
+        setReportModalOpen(false);
+        setReportReason("");
+        setReportDescription("");
+      } else {
+        showToast(data.message || "Failed to report campaign", "error");
+      }
+    } catch (error) {
+      console.error("Error reporting campaign:", error);
+      showToast("Failed to report campaign. Please try again.", "error");
+    } finally {
+      setReportSubmitting(false);
     }
   };
 
@@ -285,6 +329,79 @@ export default function CampaignDetails() {
       {/* Toast Notification */}
       {toast.visible && (
         <Toast message={toast.message} type={toast.type} onClose={hideToast} />
+      )}
+
+      {/* Report Modal */}
+      {reportModalOpen && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#14171F] border border-white/10 rounded-lg max-w-md w-full p-6">
+            <h3 className="text-xl font-bold text-[#F3EFE4] mb-4" style={{ fontFamily: "'Fraunces', serif" }}>
+              Report Campaign
+            </h3>
+            <p className="text-[#9AA1AE] text-sm mb-4" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              Help us keep the platform safe. Report this campaign if you find it suspicious or fraudulent.
+            </p>
+            
+            <form onSubmit={handleReportSubmit}>
+              <div className="mb-4">
+                <label className="block text-[#F3EFE4] text-sm mb-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                  Reason *
+                </label>
+                <select
+                  value={reportReason}
+                  onChange={(e) => setReportReason(e.target.value)}
+                  className="w-full bg-[#1B1F2A] border border-white/10 rounded-lg px-4 py-2 text-[#F3EFE4] focus:border-[#D8A13B] focus:outline-none transition-colors"
+                  style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+                  required
+                >
+                  <option value="">Select reason</option>
+                  <option value="fraudulent">🚨 Fraudulent Campaign</option>
+                  <option value="suspicious">⚠️ Suspicious Activity</option>
+                  <option value="misleading">📢 Misleading Information</option>
+                  <option value="scam">💀 Potential Scam</option>
+                  <option value="other">📌 Other</option>
+                </select>
+              </div>
+              
+              <div className="mb-4">
+                <label className="block text-[#F3EFE4] text-sm mb-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                  Description
+                </label>
+                <textarea
+                  rows="3"
+                  value={reportDescription}
+                  onChange={(e) => setReportDescription(e.target.value)}
+                  placeholder="Please provide details about your concern..."
+                  className="w-full bg-[#1B1F2A] border border-white/10 rounded-lg px-4 py-2 text-[#F3EFE4] focus:border-[#D8A13B] focus:outline-none transition-colors"
+                  style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+                />
+              </div>
+              
+              <div className="flex gap-3">
+                <button
+                  type="submit"
+                  disabled={reportSubmitting}
+                  className="flex-1 bg-[#E88A7E] text-white py-2 rounded-lg hover:bg-[#d47a6e] transition-colors disabled:opacity-50"
+                  style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+                >
+                  {reportSubmitting ? 'Submitting...' : 'Submit Report'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReportModalOpen(false);
+                    setReportReason("");
+                    setReportDescription("");
+                  }}
+                  className="flex-1 bg-[#1B1F2A] text-[#9AA1AE] py-2 rounded-lg hover:text-[#F3EFE4] transition-colors"
+                  style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -541,6 +658,18 @@ export default function CampaignDetails() {
                   <Share2 size={18} className="group-hover:scale-110 transition-transform" />
                   <span>Share this campaign</span>
                   <Copy size={14} className="opacity-50 group-hover:opacity-100 transition-opacity" />
+                </button>
+              </div>
+
+              {/* Report Button */}
+              <div className="mt-4 bg-[#14171F] border border-white/5 rounded-xl p-4">
+                <button
+                  onClick={() => setReportModalOpen(true)}
+                  className="w-full flex items-center justify-center gap-2 text-[#9AA1AE] hover:text-[#E88A7E] transition-colors group py-2"
+                  style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+                >
+                  <Flag size={18} className="group-hover:scale-110 transition-transform" />
+                  <span>Report Campaign</span>
                 </button>
               </div>
             </div>

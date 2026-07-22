@@ -98,7 +98,7 @@ export default function LoginPage() {
     try {
       await signIn.social({
         provider: "google",
-        callbackURL: "/dashboard",
+        callbackURL: `/dashboard`,
       });
     } catch (err) {
       setServerError("Google sign-in failed. Please try again.");
