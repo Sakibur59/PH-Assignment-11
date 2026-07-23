@@ -22,6 +22,7 @@ import {
   Menu,
   X,
   ArrowLeft,
+  User,
 } from "lucide-react";
 import NotificationBell from "@/components/NotificationBell";
 
@@ -92,6 +93,11 @@ export default function DashboardLayout({ children }) {
         return;
       }
 
+      // ★★★ Allow /dashboard/profile for ALL roles ★★★
+      if (path === "/dashboard/profile") {
+        return; // Allow access, don't redirect
+      }
+
       if (
         path.startsWith("/dashboard/") &&
         path !== "/dashboard/unauthorized"
@@ -130,12 +136,18 @@ export default function DashboardLayout({ children }) {
   const role = user.role || "supporter";
 
   const getNavigation = () => {
+    // ★★★ Base navigation with Profile for ALL roles ★★★
     const baseNav = [
       {
         name: "Dashboard Home",
         href: `/dashboard/${role}`,
         icon: Home,
         exact: true,
+      },
+      {
+        name: "My Profile",
+        href: `/dashboard/profile`,
+        icon: User,
       },
     ];
 
@@ -196,7 +208,7 @@ export default function DashboardLayout({ children }) {
         ...baseNav,
         { name: "Manage Users", href: "/dashboard/admin/users", icon: Users },
         {
-          name: "Manage Campaigns",
+          name: "Campaign Approvals",
           href: "/dashboard/admin/campaigns",
           icon: Megaphone,
         },
