@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { signIn } from "@/lib/auth-client";
+import { Eye, EyeOff } from "lucide-react";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -38,6 +39,7 @@ export default function LoginPage() {
   const [serverError, setServerError] = useState("");
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -104,6 +106,10 @@ export default function LoginPage() {
       setServerError("Google sign-in failed. Please try again.");
       setGoogleLoading(false);
     }
+  };
+
+  const togglePasswordVisibility = () => {
+    setShowPassword(!showPassword);
   };
 
   return (
@@ -178,7 +184,7 @@ export default function LoginPage() {
               )}
             </div>
 
-            {/* Password */}
+            {/* Password with Eye Button */}
             <div>
               <label
                 className="block text-[#F3EFE4] text-sm mb-2"
@@ -186,15 +192,24 @@ export default function LoginPage() {
               >
                 Password
               </label>
-              <input
-                type="password"
-                name="password"
-                value={form.password}
-                onChange={handleChange}
-                placeholder="Your password"
-                className="w-full bg-[#14171F] border border-white/10 focus:border-[#D8A13B] outline-none rounded-sm px-4 py-2.5 text-[#F3EFE4] placeholder:text-[#9AA1AE]/50 text-sm"
-                style={{ fontFamily: "'Space Grotesk', sans-serif" }}
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  name="password"
+                  value={form.password}
+                  onChange={handleChange}
+                  placeholder="Your password"
+                  className="w-full bg-[#14171F] border border-white/10 focus:border-[#D8A13B] outline-none rounded-sm px-4 py-2.5 text-[#F3EFE4] placeholder:text-[#9AA1AE]/50 text-sm pr-10"
+                  style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+                />
+                <button
+                  type="button"
+                  onClick={togglePasswordVisibility}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9AA1AE] hover:text-[#F3EFE4] transition-colors"
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
               {errors.password && (
                 <p className="text-[#E88A7E] text-xs mt-1.5">{errors.password}</p>
               )}
