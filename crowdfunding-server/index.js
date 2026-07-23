@@ -2493,6 +2493,104 @@ app.post("/api/admin/reports/resolve", authMiddleware, async (req, res) => {
   }
 });
 
+// server/index.js - Profile API (Email দিয়ে)
+
+// ===================== GET USER PROFILE =====================
+app.get("/api/user/profile", authMiddleware, async (req, res) => {
+  try {
+    const db = getDB();
+    const userEmail = req.user.email;
+
+    console.log('=== GET PROFILE ===');
+    console.log('User Email:', userEmail);
+
+    // Find user by email
+    const user = await db.collection("user").findOne({ 
+      email: userEmail 
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    // Remove sensitive data
+    const { password, ...userData } = user;
+
+    res.json({
+      success: true,
+      user: userData
+    });
+  } catch (error) {
+    console.error("Get profile error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ===================== UPDATE USER PROFILE =====================
+app.put("/api/user/profile", authMiddleware, async (req, res) => {
+  try {
+    const { name, image } = req.body;
+    const userEmail = req.user.email;
+    const db = getDB();
+
+    console.log('=== UPDATE PROFILE ===');
+    console.log('User Email:', userEmail);
+    console.log('New Name:', name);
+    console.log('New Image:', image);
+
+    if (!name) {
+      return res.status(400).json({
+        success: false,
+        message: "Name is required"
+      });
+    }
+
+    // Find user by email
+    const user = await db.collection("user").findOne({ 
+      email: userEmail 
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    // Update user
+    const updateData = {
+      name: name,
+      updatedAt: new Date()
+    };
+
+    if (image) {
+      updateData.image = image;
+    }
+
+    await db.collection("user").updateOne(
+      { email: userEmail },
+      { $set: updateData }
+    );
+
+    // Get updated user
+    const updatedUser = await db.collection("user").findOne({ 
+      email: userEmail 
+    });
+
+    res.json({
+      success: true,
+      message: "Profile updated successfully",
+      user: updatedUser
+    });
+  } catch (error) {
+    console.error("Update profile error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // Test route
 app.get("/", (req, res) => {
   res.send("Crowdfunding server running");
