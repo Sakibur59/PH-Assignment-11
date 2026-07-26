@@ -30,12 +30,7 @@ Whether you're raising funds for a startup, a personal cause, education, healthc
 
 ### 🌐 Client
 ```
-https://your-client.vercel.app
-```
-
-### 🔗 Server
-```
-https://your-server.onrender.com
+https://crowdfunding-client-six.vercel.app
 ```
 
 ---
